@@ -1,0 +1,9 @@
+build/
+.pio/
+.vscode/
+.venv/
+__pycache__/
+*.o
+*.a
+*.so
+*.dylib

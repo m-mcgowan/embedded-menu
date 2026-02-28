@@ -1,0 +1,14 @@
+[project]
+name = "embedded-menu-integration-tests"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "pyserial>=3.5",
+    "pytest>=7.0",
+    "embedded-bridge",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest-timeout>=2.0",
+]
