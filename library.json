@@ -1,0 +1,14 @@
+{
+  "name": "embedded-menu",
+  "version": "0.1.0",
+  "description": "Transport-agnostic command registry for embedded firmware. Define commands once, dispatch from serial, JSON, binary, and cloud.",
+  "keywords": ["command", "registry", "serial", "json", "dispatch", "cli"],
+  "license": "MIT",
+  "headers": "embedded_menu.h",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src"
+  },
+  "frameworks": ["arduino", "espidf"],
+  "platforms": "*"
+}
