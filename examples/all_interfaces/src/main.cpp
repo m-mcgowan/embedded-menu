@@ -79,6 +79,29 @@ static void info_handler(Cmd& cmd) {
     }
 }
 
+static void sleep_handler(Cmd& cmd) {
+    int ms = cmd.param_int("ms", 5000);
+    if (cmd.source() == CmdSource::ARGV) {
+        cmd.out().printf("deep sleep %d ms\r\n", ms);
+    } else {
+        cmd.reply("sleeping", ms);
+    }
+    // Flush and wait for USB-CDC to transmit before sleeping.
+    // USB-CDC needs time to complete the USB transaction.
+    Serial.flush();
+    delay(500);
+#if defined(ARDUINO_ARCH_ESP32)
+    esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(ms) * 1000);
+    esp_deep_sleep_start();
+#elif defined(ARDUINO_ARCH_RP2040)
+    // RP2040 doesn't have true deep sleep with timer wakeup via Arduino API,
+    // fall back to light sleep
+    delay(ms);
+    // Force USB re-enumeration
+    rp2040.reboot();
+#endif
+}
+
 // --- Registry and both transports ---
 
 static Registry<16> registry;
@@ -104,6 +127,7 @@ void setup() {
     registry.add("led",   {led_handler,   "Control built-in LED", "hw"});
     registry.add("add",   {add_handler,   "Add two numbers", "math"});
     registry.add("info",  {info_handler,  "Device info", "system"});
+    registry.add("sleep", {sleep_handler, "Sleep for N ms", "system"});
 
     serial_writer.println("embedded-menu example — type 'help' or send JSON");
     console.set_show_prompt(true);

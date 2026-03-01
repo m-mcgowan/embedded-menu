@@ -329,36 +329,29 @@ printed verbatim rather than reformatted.
 
 All three dispatch through the same registry handler.
 
-## Web UI
+## Web UI (future direction)
 
 embedded-menu's JSON transport and schema introspection enable web UIs that
-connect directly to devices via the **Web Serial API** — no firmware changes,
-no embedded web server, no flash overhead. The UI runs entirely in the
-browser; the device just speaks JSON lines over USB-CDC, which it already
-does through embedded-menu's JSON serial transport.
+connect to devices — no firmware changes beyond the JSON serial transport
+that embedded-menu already provides.
 
 ### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Browser (SvelteKit SPA)                                     │
+│  Browser (SPA)                                               │
 │                                                             │
-│  Auto-generated from registry schema:                        │
-│  - Command list with help text and groups                   │
-│  - Parameter inputs: sliders (ranges), dropdowns (enums),   │
-│    toggles (bools), text fields (strings)                   │
-│  - Live state polling                                       │
-│  - Response formatting (tree view, key-value, raw)          │
+│  Core: terminal interface (raw command/response)             │
 │                                                             │
-│  + Custom views per application (optional):                  │
-│  - Notecard: endpoint browser, request builder, REPL        │
-│  - Provisioner: test progress, sensor results, pass/fail    │
-│  - EEQ: live mode viz, GPS track, battery, phase timeline   │
+│  Extensible with custom panels:                              │
+│  - Status widgets (fixed in UI, subscribe to responses)      │
+│  - Command buttons (send specific commands on click)         │
+│  - Custom response renderers (match on cmd name)             │
+│  - Application-specific views (GPS map, waveform, etc.)      │
 ├─────────────────────────────────────────────────────────────┤
-│  Connection layer (same SPA, multiple backends):             │
-│  - Web Serial API: browser ↔ USB-CDC directly               │
-│  - WebSocket: browser ↔ host bridge ↔ serial                │
-│  - Notehub REST: browser ↔ Notehub API ↔ Notecard C&C      │
+│  Connection layer:                                            │
+│  - WebSocket: browser ↔ device (ESP32) or host bridge        │
+│  - Web Serial API: browser ↔ USB-CDC directly (optional)     │
 │  Protocol: embedded-menu JSON lines                          │
 └─────────────────────────────────────────────────────────────┘
 
@@ -366,19 +359,23 @@ does through embedded-menu's JSON serial transport.
   Just the JSON serial transport it already has.
 ```
 
-### Connection modes
+### How it works
 
-| Mode | Connection | Use case |
-|---|---|---|
-| **Web Serial** | Browser ↔ USB-CDC directly | Local dev, bench testing. Zero firmware cost |
-| **Host bridge** | Browser ↔ WebSocket ↔ Python ↔ serial | Remote bench (SSH tunnel), CI dashboards |
-| **Notehub API** | Browser ↔ Notehub REST ↔ Notecard C&C | Deployed devices, fleet management |
-| **Device-hosted** | ESP32 serves SPA from LittleFS (UIH pattern) | Opt-in for WiFi devices needing standalone operation. Resource-heavy |
+The bridge (Python, using embedded-bridge) connects to the device over
+serial, starts a WebSocket server, and opens the SPA in the browser with
+the WebSocket URL as a parameter. The SPA is a local file in this repo —
+no build step, no hosting, no device-side web server.
 
-The primary path is **Web Serial** — the SPA is hosted on GitHub Pages (or
-localhost), connects to the device over USB, and discovers the command schema
-on connect. No firmware changes needed beyond the JSON serial transport
-that embedded-menu already provides.
+```
+Browser (local SPA file)
+    ↕ WebSocket (ws://localhost:PORT)
+Python bridge (serial ↔ WebSocket relay)
+    ↕ Serial
+Device
+```
+
+This enables automated testing — tests can spin up the bridge, connect
+via WebSocket, and drive commands without browser permission dialogs.
 
 Device-hosted (the UIH/ESP32-SvelteKit pattern) remains an option for devices
 with WiFi that need standalone browser access without a computer, but it's
@@ -387,8 +384,10 @@ and not the default path.
 
 ### Hosting
 
-The SPA is a static site — no server-side logic. Hosting options:
+The SPA is a static file — no server-side logic. Hosting options:
 
+- **Local file** — opened by the bridge directly, parameterized with
+  the WebSocket URL. The default path
 - **GitHub Pages** — free, versioned, works for public and org repos
 - **localhost** (`npm run dev`) — during UI development
 - **blues.dev or equivalent** — could replace the current Notecard in-browser
@@ -400,7 +399,7 @@ The SPA is a static site — no server-side logic. Hosting options:
 proper application: endpoint browser with inline documentation, request
 builder with typed fields (not raw JSON), response explorer (expandable tree),
 history/favorites, environment variable editor with schema awareness from
-embedded-config-cpp. Connects via Web Serial to any Notecard dev kit. This
+embedded-config-cpp. Connects via WebSocket to any Notecard dev kit. This
 overlaps with the planned `notehub-ui` in ensemble — the device-facing
 Notecard UI shares components (endpoint browser, request builder), while
 notehub-ui adds cloud management (route editor, fleet config, IaC diff).
@@ -408,31 +407,39 @@ notehub-ui adds cloud management (route editor, fleet config, IaC diff).
 **Provisioner UI** — web dashboard for the provisioning/test bench. Shows
 test catalog, run progress, sensor results with pass/fail, power profiling
 charts. Replaces the current serial menu for interactive use while the JSON
-API continues to serve automated test runners. Connects via Web Serial
+API continues to serve automated test runners. Connects via WebSocket
 or host bridge.
 
 **EEQ application UI** — when the main firmware's menu system is reworked,
 the web UI provides: live mode visualization, GPS track overlay, battery and
 charging status, phase timeline, capture statistics, configuration editor.
 The serial CLI remains for bench debugging; the web UI is for richer
-interaction. Connects via Web Serial when on the bench, Notehub API when
-deployed.
+interaction.
 
-### Shared web UI framework
+### Schema-driven controls
 
-The auto-generated portion (command list, parameter controls, state display)
-is a reusable SvelteKit component library. Custom views are application-
-specific pages that compose the shared components with domain-specific
-visualization. This means:
+The schema introspection endpoint (`{"cmd":"schema"}`) returns the full
+command catalog with parameter types, ranges, groups, and help text — enough
+for the web UI to render controls without any application-specific frontend
+code. This means:
 
 - New command → automatically appears in the web UI (from schema)
 - New parameter with range → automatically gets a slider
 - Custom views (GPS map, waveform chart) are additive, not required
 
-The schema introspection endpoint (`{"cmd":"schema"}`) returns the full
-command catalog with parameter types, ranges, groups, and help text — enough
-for the web UI to render controls without any application-specific frontend
-code.
+### Design goals (not yet implemented)
+
+- **Extensible framework**: core terminal view always available, with a
+  plugin system for custom panels that subscribe to specific commands or
+  response patterns
+- **Schema-driven controls**: auto-generated from the registry's
+  introspection endpoint (Phase 3)
+- **WebSocket transport**: enables automated testing and remote access
+- **Bridge command**: `bridge open` (or similar) connects to device,
+  starts WebSocket server, opens the SPA in the default browser
+
+The SPA lives in this repo (`web/`) as a local file — no build step,
+no hosting infrastructure.
 
 ## Relationship to other projects
 
@@ -519,11 +526,7 @@ embedded-menu/
 │   │       ├── passthrough.h    # raw JSON passthrough command
 │   │       └── friendly.h       # CLI-friendly syntax (key=value → JSON)
 │   └── embedded_menu.h          # convenience include
-├── web/                         # SvelteKit web UI framework (Phase 4)
-│   ├── src/lib/
-│   │   ├── components/          # shared: CommandList, ParamInput, ResponseView
-│   │   └── stores/              # registry schema, WebSocket state
-│   └── package.json
+├── web/                         # Web UI (future — see Phase 4)
 ├── library.json                 # PlatformIO
 ├── library.properties           # Arduino IDE
 ├── CMakeLists.txt               # CMake / Zephyr / Pico SDK
@@ -558,14 +561,12 @@ embedded-menu/
 - `binary.h` transport (embedded-bridge binary protocol)
 - **Validation target**: UIH migration
 
-### Phase 4: Web UI framework
-- SvelteKit component library: auto-generated command controls from schema
-- WebSocket transport adapter (device-hosted or host-bridged)
-- Shared components: command list, parameter inputs, response explorer
-- **Validation targets**:
-  - Notecard developer UI (endpoint browser, request builder, REPL)
-  - Provisioner dashboard (test progress, sensor results, pass/fail)
-  - EEQ application UI (live mode, GPS, battery, phase timeline)
+### Phase 4: Web UI (future direction)
+- Extensible web framework with WebSocket transport
+- Core: terminal interface for raw command/response
+- Plugin system for custom panels (status widgets, buttons, response renderers)
+- WebSocket served by device (ESP32) or bridged via embedded-bridge Python host
+- Technology and scope TBD — may live in this repo or split out
 
 ## Positioning: why this, why now
 
