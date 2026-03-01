@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>embedded-menu</title>
+<style>
+:root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --border: #0f3460;
+    --text: #e0e0e0;
+    --text-dim: #888;
+    --accent: #e94560;
+    --accent-dim: #533a5e;
+    --ok: #4ecca3;
+    --error: #e94560;
+    --cmd-out: #a8d8ea;
+    --cmd-in: #4ecca3;
+    --font: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dim);
+}
+
+#status {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+#status.connected { color: var(--ok); }
+#status.disconnected { color: var(--error); }
+#status.connecting { color: #f0c040; }
+
+.main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Terminal */
+#terminal-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+#terminal {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.line { white-space: pre-wrap; word-break: break-all; }
+.line.sent { color: var(--cmd-out); }
+.line.sent::before { content: '▸ '; color: var(--text-dim); }
+.line.received { color: var(--cmd-in); }
+.line.received::before { content: '◂ '; color: var(--text-dim); }
+.line.error { color: var(--error); }
+.line.error::before { content: '✗ '; }
+.line.info { color: var(--text-dim); font-style: italic; }
+
+#input-bar {
+    display: flex;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+#cmd-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: 4px 0 0 4px;
+    outline: none;
+}
+
+#cmd-input:focus { border-color: var(--accent); }
+
+#send-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 6px 16px;
+    font-family: var(--font);
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 0 4px 4px 0;
+}
+
+#send-btn:hover { opacity: 0.85; }
+
+/* Panels sidebar */
+#panels {
+    width: 300px;
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    flex-shrink: 0;
+    display: none; /* shown when panels are registered */
+}
+
+#panels.has-panels { display: block; }
+
+.panel {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+}
+
+.panel h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+}
+
+.panel-body {
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.panel-body .kv { display: flex; justify-content: space-between; }
+.panel-body .kv .key { color: var(--text-dim); }
+.panel-body .kv .val { color: var(--text); text-align: right; }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>embedded-menu</h1>
+    <span id="status" class="disconnected">disconnected</span>
+</header>
+
+<div class="main">
+    <div id="terminal-container">
+        <div id="terminal"></div>
+        <div id="input-bar">
+            <input id="cmd-input" type="text" placeholder="Type a command or JSON..."
+                   autocomplete="off" spellcheck="false">
+            <button id="send-btn">Send</button>
+        </div>
+    </div>
+    <div id="panels"></div>
+</div>
+
+<script>
+// ── Connection ──
+
+const params = new URLSearchParams(window.location.search);
+const wsUrl = params.get('ws') || 'ws://localhost:8765';
+
+let ws = null;
+let reconnectTimer = null;
+
+function connect() {
+    setStatus('connecting');
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        setStatus('connected');
+        appendLine('Connected to ' + wsUrl, 'info');
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    };
+
+    ws.onmessage = (event) => {
+        const text = event.data.trim();
+        if (!text) return;
+        appendLine(text, 'received');
+        try {
+            const data = JSON.parse(text);
+            dispatchToPlugins(data);
+        } catch (e) {
+            // not JSON, just display as text
+        }
+    };
+
+    ws.onclose = () => {
+        setStatus('disconnected');
+        appendLine('Disconnected', 'info');
+        scheduleReconnect();
+    };
+
+    ws.onerror = () => {
+        // onclose will fire after this
+    };
+}
+
+function scheduleReconnect() {
+    if (!reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connect();
+        }, 2000);
+    }
+}
+
+function setStatus(state) {
+    const el = document.getElementById('status');
+    el.textContent = state;
+    el.className = state;
+}
+
+// ── Terminal ──
+
+const terminal = document.getElementById('terminal');
+const cmdInput = document.getElementById('cmd-input');
+const sendBtn = document.getElementById('send-btn');
+const history = [];
+let historyIndex = -1;
+
+function appendLine(text, cls) {
+    const div = document.createElement('div');
+    div.className = 'line ' + cls;
+    div.textContent = text;
+    terminal.appendChild(div);
+    terminal.scrollTop = terminal.scrollHeight;
+}
+
+function send(text) {
+    if (!text.trim() || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+    // Add to history
+    if (history[history.length - 1] !== text) history.push(text);
+    historyIndex = history.length;
+
+    appendLine(text, 'sent');
+    ws.send(text);
+}
+
+sendBtn.addEventListener('click', () => {
+    send(cmdInput.value);
+    cmdInput.value = '';
+    cmdInput.focus();
+});
+
+cmdInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        send(cmdInput.value);
+        cmdInput.value = '';
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (historyIndex > 0) {
+            historyIndex--;
+            cmdInput.value = history[historyIndex];
+        }
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (historyIndex < history.length - 1) {
+            historyIndex++;
+            cmdInput.value = history[historyIndex];
+        } else {
+            historyIndex = history.length;
+            cmdInput.value = '';
+        }
+    }
+});
+
+// ── Plugin system ──
+
+const plugins = [];
+const panelsEl = document.getElementById('panels');
+
+/**
+ * Register a panel plugin.
+ *
+ * @param {Object} plugin
+ * @param {string} plugin.name - Panel title
+ * @param {string|string[]} plugin.subscribe - cmd name(s) to listen for
+ * @param {function} plugin.render - (panelBody, data) => void
+ *
+ * Example:
+ *   MenuUI.registerPlugin({
+ *     name: 'Device Info',
+ *     subscribe: 'info',
+ *     render(el, data) {
+ *       el.innerHTML = Object.entries(data)
+ *         .filter(([k]) => k !== 'cmd')
+ *         .map(([k, v]) => `<div class="kv"><span class="key">${k}</span><span class="val">${v}</span></div>`)
+ *         .join('');
+ *     }
+ *   });
+ */
+function registerPlugin(plugin) {
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.innerHTML = `<h3>${plugin.name}</h3><div class="panel-body"></div>`;
+    panelsEl.appendChild(panel);
+    panelsEl.classList.add('has-panels');
+
+    const cmds = Array.isArray(plugin.subscribe) ? plugin.subscribe : [plugin.subscribe];
+    plugins.push({
+        cmds,
+        render: plugin.render,
+        body: panel.querySelector('.panel-body'),
+    });
+}
+
+function dispatchToPlugins(data) {
+    if (!data.cmd) return;
+    for (const p of plugins) {
+        if (p.cmds.includes(data.cmd)) {
+            try { p.render(p.body, data); } catch (e) { console.error('plugin error:', e); }
+        }
+    }
+}
+
+// ── Built-in plugins ──
+
+registerPlugin({
+    name: 'Device Info',
+    subscribe: 'info',
+    render(el, data) {
+        el.innerHTML = Object.entries(data)
+            .filter(([k]) => k !== 'cmd')
+            .map(([k, v]) => `<div class="kv"><span class="key">${k}</span><span class="val">${v}</span></div>`)
+            .join('');
+    }
+});
+
+// ── Public API for custom pages ──
+
+window.MenuUI = {
+    registerPlugin,
+    send,
+    appendLine,
+};
+
+// ── Start ──
+
+connect();
+cmdInput.focus();
+</script>
+</body>
+</html>
