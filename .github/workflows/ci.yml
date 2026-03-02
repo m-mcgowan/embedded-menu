@@ -8,6 +8,7 @@ on:
 
 jobs:
   test:
+    name: Native tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,3 +21,73 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  pio-deps:
+    name: PlatformIO dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache PlatformIO
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/platforms
+            ~/.platformio/packages
+            ~/.platformio/tools
+            ~/.cache/pip
+            examples/all_interfaces/.pio/libdeps
+          key: pio-${{ hashFiles('examples/all_interfaces/platformio.ini') }}
+          restore-keys: pio-
+
+      - name: Setup Python
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PlatformIO
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: pip install platformio
+
+      - name: Install dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: examples/all_interfaces
+        run: |
+          for env in esp32s3 pico; do
+            echo "Installing dependencies for: $env"
+            pio pkg install -e "$env"
+          done
+
+  pio-build:
+    name: PlatformIO ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    needs: [pio-deps]
+    strategy:
+      matrix:
+        env: [esp32s3, pico]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore PlatformIO cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.platformio/platforms
+            ~/.platformio/packages
+            ~/.platformio/tools
+            ~/.cache/pip
+            examples/all_interfaces/.pio/libdeps
+          key: pio-${{ hashFiles('examples/all_interfaces/platformio.ini') }}
+          restore-keys: pio-
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build
+        run: pio run -e ${{ matrix.env }} -d examples/all_interfaces
