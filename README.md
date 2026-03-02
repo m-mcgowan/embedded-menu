@@ -2,13 +2,29 @@
 
 Header-only C++17 library for embedded command dispatch. Define commands once,
 dispatch them from any transport — interactive console, JSON API, or framed
-binary link.
+binary link. Built on [embedded-bridge](https://github.com/m-mcgowan/embedded-bridge)
+for structured host-side communication with embedded devices.
 
 ```
 Serial bytes → [Transport] → Registry → Handler(Cmd&) → response
                                 ↑
 Cloud notes  → [Transport] ────┘
 ```
+
+## What you can do with it
+
+- **Add a command interface to any firmware** — debug, configure, and
+  query a device over serial without a custom protocol
+- **Build a browser dashboard** — the WebSocket bridge and SPA give you a
+  live terminal and plugin panels with zero frontend tooling
+- **Accept commands from Notehub** — the same handlers work for cloud-sent
+  JSON notes and local serial input
+- **Reliably communicate over noisy UART** — HDLC framing with CRC-16
+  handles corruption, byte stuffing, and flow control
+- **Stream sensor data to a host** — binary framing (HDLC/SLIP/COBS)
+  carries raw payloads alongside text commands on the same serial link
+- **Add a CLI to your test firmware** — interactive console with help,
+  history, and tab completion for hardware bring-up
 
 ## Features
 
