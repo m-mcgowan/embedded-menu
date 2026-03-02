@@ -57,6 +57,10 @@ public:
     size_t println(int v) { return print(v) + print("\r\n"); }
     size_t println(float v, int digits = 2) { return print(v, digits) + print("\r\n"); }
 
+    /// Flush a complete frame. No-op for plain writers; framing writers
+    /// override to encode + emit the buffered payload as a framed message.
+    virtual void end_frame() {}
+
     size_t printf(const char* fmt, ...) __attribute__((format(printf, 2, 3))) {
         char buf[128];
         va_list args;

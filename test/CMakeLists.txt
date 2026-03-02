@@ -13,6 +13,11 @@ add_executable(embedded_menu_tests
     test_registry.cpp
     test_json_serial.cpp
     test_basic_serial.cpp
+    test_crc16.cpp
+    test_hdlc.cpp
+    test_framed_json_serial.cpp
+    test_slip.cpp
+    test_cobs.cpp
 )
 target_include_directories(embedded_menu_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src

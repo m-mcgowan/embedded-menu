@@ -130,6 +130,7 @@ private:
 
         jb.end();
         _output.print(resp);
+        _output.end_frame();
     }
 
     void _emit_error(const char* cmd_name, const char* msg) {
@@ -140,6 +141,7 @@ private:
         jb.field("error", msg);
         jb.end();
         _output.print(resp);
+        _output.end_frame();
     }
 };
 
