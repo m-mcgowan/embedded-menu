@@ -22,6 +22,8 @@ Cloud notes  → [Transport] ────┘
   automatically when `Arduino.h` is detected
 - **Pluggable framing** — HDLC (with CRC-16), SLIP, and COBS framers for
   reliable communication over real UART links
+- **Browser UI** — single-file SPA with serial-to-WebSocket bridge and a
+  plugin system for custom dashboards
 
 ## Quick start
 
@@ -318,6 +320,102 @@ Properties:
 Use HDLC unless you have a specific reason not to. It handles integrity
 checking so your application doesn't have to.
 
+## Web UI
+
+A single-file SPA (`web/index.html`) and serial-to-WebSocket bridge
+(`web/bridge.py`) let you interact with a device from a browser. The bridge
+relays JSON lines between the serial port and WebSocket clients.
+
+### Running
+
+```bash
+pip install pyserial websockets
+python web/bridge.py --port /dev/cu.usbmodem1433101
+```
+
+This starts the WebSocket server (auto-assigned port), opens the SPA in
+your browser, and begins relaying. Use `--ws-port 9000` for a fixed port
+or `--no-browser` to skip auto-open.
+
+The bridge handles device disconnection (deep sleep, USB reset) by
+automatically reconnecting when the serial port reappears.
+
+### SPA features
+
+The SPA connects to the bridge via WebSocket and provides:
+
+- **Terminal** — send commands (JSON or plain text), see responses with
+  directional markers (`▸` sent, `◂` received)
+- **Command history** — arrow keys navigate previous commands
+- **Connection status** — header badge shows connected/disconnected/connecting
+  with auto-reconnect on disconnect
+- **Plugin sidebar** — custom panels that update in response to command data
+
+### Plugins
+
+Register plugins to create live-updating panels from command responses.
+A built-in Device Info plugin is included as an example:
+
+```javascript
+MenuUI.registerPlugin({
+    name: 'Device Info',
+    subscribe: 'info',          // update when {"cmd":"info",...} is received
+    render(el, data) {
+        el.innerHTML = Object.entries(data)
+            .filter(([k]) => k !== 'cmd')
+            .map(([k, v]) =>
+                `<div class="kv">
+                   <span class="key">${k}</span>
+                   <span class="val">${v}</span>
+                 </div>`)
+            .join('');
+    }
+});
+```
+
+Send `{"cmd":"info"}` and the panel populates with the response fields.
+
+Plugin API:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `name` | `string` | Panel title |
+| `subscribe` | `string` or `string[]` | Command name(s) to listen for |
+| `render` | `(el, data) => void` | Called with the panel body element and parsed JSON response |
+
+Global API on `window.MenuUI`:
+
+| Method | Description |
+|--------|-------------|
+| `registerPlugin(plugin)` | Add a sidebar panel |
+| `send(text)` | Send a command string to the device |
+| `appendLine(text, cls)` | Add a line to the terminal (`'sent'`, `'received'`, `'error'`, `'info'`) |
+
+### Custom pages
+
+Create a custom HTML page that loads the SPA and adds project-specific
+plugins:
+
+```html
+<script>
+// After MenuUI is available:
+MenuUI.registerPlugin({
+    name: 'Sensors',
+    subscribe: ['temperature', 'humidity'],
+    render(el, data) {
+        el.innerHTML = `<div class="kv">
+            <span class="key">${data.cmd}</span>
+            <span class="val">${data.value}</span>
+        </div>`;
+    }
+});
+</script>
+```
+
+The WebSocket URL defaults to `ws://localhost:8765` but can be overridden
+with the `?ws=` query parameter:
+`file:///path/to/index.html?ws=ws://localhost:9000`
+
 ## Configuration
 
 | Macro | Default | Effect |
@@ -356,6 +454,11 @@ src/
     detail/
       json_parser.h                  — JSON parser + builder (internal)
       crc16.h                        — CRC-16/HDLC (internal)
+web/
+  index.html                         — single-file SPA (terminal + plugin sidebar)
+  bridge.py                          — serial ↔ WebSocket bridge
+examples/
+  all_interfaces/                    — dual transport (JSON + console) on one serial port
 ```
 
 Framing headers are **not** included by `embedded_menu.h` — include the
