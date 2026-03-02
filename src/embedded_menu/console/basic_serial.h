@@ -94,6 +94,7 @@ private:
         // Built-in: help
         if (strcmp(args[0], "help") == 0) {
             _help(argc > 1 ? args[1] : nullptr);
+            _output.end_frame();
             return;
         }
 
@@ -103,6 +104,7 @@ private:
         if (result == Result::NOT_FOUND) {
             _output.printf("Unknown command: %s\r\n", args[0]);
         }
+        _output.end_frame();
     }
 
     void _help(const char* topic) {
