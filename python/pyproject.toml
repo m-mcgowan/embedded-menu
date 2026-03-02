@@ -1,0 +1,23 @@
+[project]
+name = "embedded-menu"
+version = "0.1.0"
+description = "Python client for embedded-menu devices. Discover commands, send requests, and build custom UIs."
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "embedded-bridge",
+]
+
+[project.optional-dependencies]
+serial = ["pyserial>=3.5"]
+dev = ["pytest>=7.0"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

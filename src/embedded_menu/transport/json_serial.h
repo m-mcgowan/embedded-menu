@@ -45,9 +45,16 @@ public:
 
     Writer& output() { return _output; }
 
+    /// Whether the TUI should be active. Firmware checks this to decide
+    /// whether to render menus, prompts, and other unsolicited output.
+    /// Defaults to true. A JSON client sends {"cmd":"tui","enabled":false}
+    /// to suppress TUI output while it drives commands programmatically.
+    bool tui_enabled() const { return _tui_enabled; }
+
     void reset() { _line_pos = 0; }
 
 private:
+    bool _tui_enabled = true;
     Registry<N>& _registry;
     Writer& _output;
 
@@ -65,14 +72,28 @@ private:
 
         // Find the "cmd" field
         const char* cmd_name = nullptr;
+        const char* topic = nullptr;
         for (int i = 0; i < n; i++) {
             if (strcmp(pairs[i].key, "cmd") == 0) {
                 cmd_name = pairs[i].value;
-                break;
+            } else if (strcmp(pairs[i].key, "topic") == 0) {
+                topic = pairs[i].value;
             }
         }
         if (!cmd_name || !*cmd_name) {
             _emit_error(nullptr, "missing cmd");
+            return;
+        }
+
+        // Built-in: help
+        if (strcmp(cmd_name, "help") == 0) {
+            _help(topic);
+            return;
+        }
+
+        // Built-in: tui
+        if (strcmp(cmd_name, "tui") == 0) {
+            _tui(pairs, n);
             return;
         }
 
@@ -131,6 +152,96 @@ private:
         jb.end();
         _output.print(resp);
         _output.end_frame();
+    }
+
+    void _tui(const detail::JsonPair* pairs, int n) {
+        // Look for "enabled" param
+        for (int i = 0; i < n; i++) {
+            if (strcmp(pairs[i].key, "enabled") == 0) {
+                _tui_enabled =
+                    strcmp(pairs[i].value, "true") == 0 ||
+                    strcmp(pairs[i].value, "1") == 0;
+            }
+        }
+        // Always respond with current state
+        char resp[64];
+        detail::JsonBuilder jb(resp, sizeof(resp));
+        jb.begin().field("cmd", "tui").field("enabled", _tui_enabled).end();
+        _output.print(resp);
+        _output.end_frame();
+    }
+
+    void _help(const char* topic) {
+        if (topic && *topic) {
+            // Single command detail
+            const auto* entry = _registry.find(topic);
+            if (!entry) {
+                _emit_error("help", "not found");
+                return;
+            }
+            _output.print("{\"cmd\":\"help\",");
+            _emit_entry_fields(*entry);
+            _output.print("}\n");
+            _output.end_frame();
+            return;
+        }
+
+        // List all commands
+        _output.print("{\"cmd\":\"help\",\"commands\":[");
+        bool first = true;
+        for (const auto& entry : _registry) {
+            if (!first) _output.print(",");
+            first = false;
+            _output.print("{");
+            _emit_entry_fields(entry);
+            _output.print("}");
+        }
+        _output.print("]}\n");
+        _output.end_frame();
+    }
+
+    void _emit_entry_fields(const CommandEntry& entry, bool leading_comma = false) {
+        _output.print(leading_comma ? ",\"name\":\"" : "\"name\":\"");
+        _emit_json_string(entry.name);
+        _output.print("\"");
+        if (entry.help) {
+            _output.print(",\"help\":\"");
+            _emit_json_string(entry.help);
+            _output.print("\"");
+        } else {
+            _output.print(",\"help\":null");
+        }
+        if (entry.group) {
+            _output.print(",\"group\":\"");
+            _emit_json_string(entry.group);
+            _output.print("\"");
+        } else {
+            _output.print(",\"group\":null");
+        }
+        _output.print(",\"aliases\":[");
+        bool first_alias = true;
+        for (size_t i = 0; i < EMENU_MAX_ALIASES && entry.aliases[i]; i++) {
+            if (!first_alias) _output.print(",");
+            first_alias = false;
+            _output.print("\"");
+            _emit_json_string(entry.aliases[i]);
+            _output.print("\"");
+        }
+        _output.print("]");
+    }
+
+    void _emit_json_string(const char* s) {
+        while (*s) {
+            switch (*s) {
+                case '"':  _output.print("\\\""); break;
+                case '\\': _output.print("\\\\"); break;
+                case '\n': _output.print("\\n"); break;
+                case '\r': _output.print("\\r"); break;
+                case '\t': _output.print("\\t"); break;
+                default:   _output.write(static_cast<uint8_t>(*s)); break;
+            }
+            s++;
+        }
     }
 
     void _emit_error(const char* cmd_name, const char* msg) {

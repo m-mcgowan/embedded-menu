@@ -118,4 +118,134 @@ TEST_CASE("no reply gives ok") {
     CHECK(strstr(out.str(), "\"ok\":true") != nullptr);
 }
 
+TEST_CASE("help lists all commands") {
+    Registry<8> reg;
+    reg.add("ping", {ping_handler, "Echo a ping"});
+    reg.add("echo", {echo_handler, "Echo back", nullptr, {"e"}});
+
+    BufferWriter<1024> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help"})");
+
+    CHECK(strstr(out.str(), "\"cmd\":\"help\"") != nullptr);
+    CHECK(strstr(out.str(), "\"commands\":[") != nullptr);
+    CHECK(strstr(out.str(), "\"name\":\"ping\"") != nullptr);
+    CHECK(strstr(out.str(), "\"help\":\"Echo a ping\"") != nullptr);
+    CHECK(strstr(out.str(), "\"name\":\"echo\"") != nullptr);
+    CHECK(strstr(out.str(), "\"aliases\":[\"e\"]") != nullptr);
+}
+
+TEST_CASE("help with topic") {
+    Registry<8> reg;
+    reg.add("ping", {ping_handler, "Echo a ping"});
+    reg.add("echo", {echo_handler, "Echo back"});
+
+    BufferWriter<1024> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help","topic":"ping"})");
+
+    CHECK(strstr(out.str(), "\"cmd\":\"help\"") != nullptr);
+    CHECK(strstr(out.str(), "\"name\":\"ping\"") != nullptr);
+    CHECK(strstr(out.str(), "\"help\":\"Echo a ping\"") != nullptr);
+    // Should NOT contain commands array (single item response)
+    CHECK(strstr(out.str(), "\"commands\"") == nullptr);
+}
+
+TEST_CASE("help with unknown topic") {
+    Registry<8> reg;
+    reg.add("ping", {ping_handler});
+
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help","topic":"nonexistent"})");
+
+    CHECK(strstr(out.str(), "\"error\":\"not found\"") != nullptr);
+}
+
+TEST_CASE("help with groups") {
+    Registry<8> reg;
+    reg.add("ping", {ping_handler, "Ping", nullptr});
+    reg.add("led", {[](Cmd& cmd) { cmd.reply("ok", true); }, "LED ctrl", "hw"});
+
+    BufferWriter<1024> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help"})");
+
+    CHECK(strstr(out.str(), "\"group\":null") != nullptr);  // ping has no group
+    CHECK(strstr(out.str(), "\"group\":\"hw\"") != nullptr); // led has group
+}
+
+TEST_CASE("help empty registry") {
+    Registry<8> reg;
+
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help"})");
+
+    CHECK(strstr(out.str(), "\"commands\":[]") != nullptr);
+}
+
+TEST_CASE("tui enabled by default") {
+    Registry<8> reg;
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+
+    CHECK(js.tui_enabled() == true);
+}
+
+TEST_CASE("tui disable") {
+    Registry<8> reg;
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+
+    js.process_line(R"({"cmd":"tui","enabled":false})");
+
+    CHECK(js.tui_enabled() == false);
+    CHECK(strstr(out.str(), "\"cmd\":\"tui\"") != nullptr);
+    CHECK(strstr(out.str(), "\"enabled\":false") != nullptr);
+}
+
+TEST_CASE("tui enable") {
+    Registry<8> reg;
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+
+    // Disable first, then re-enable
+    js.process_line(R"({"cmd":"tui","enabled":false})");
+    CHECK(js.tui_enabled() == false);
+
+    out.clear();
+    js.process_line(R"({"cmd":"tui","enabled":true})");
+
+    CHECK(js.tui_enabled() == true);
+    CHECK(strstr(out.str(), "\"enabled\":true") != nullptr);
+}
+
+TEST_CASE("tui query without enabled param") {
+    Registry<8> reg;
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+
+    // Just query current state
+    js.process_line(R"({"cmd":"tui"})");
+
+    CHECK(js.tui_enabled() == true);  // unchanged
+    CHECK(strstr(out.str(), "\"enabled\":true") != nullptr);
+}
+
+TEST_CASE("tui does not conflict with registered commands") {
+    Registry<8> reg;
+    reg.add("ping", {ping_handler});
+
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+
+    js.process_line(R"({"cmd":"tui","enabled":false})");
+    CHECK(js.tui_enabled() == false);
+
+    out.clear();
+    js.process_line(R"({"cmd":"ping"})");
+    CHECK(strstr(out.str(), "\"ok\":true") != nullptr);
+}
+
 }  // TEST_SUITE
