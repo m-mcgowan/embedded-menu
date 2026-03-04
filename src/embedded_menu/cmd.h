@@ -165,7 +165,7 @@ private:
     const char* _store_reply(const char* s) {
         if (!s) return nullptr;
         size_t len = strlen(s);
-        if (_reply_buf_pos + len + 1 > REPLY_BUF_SIZE) return s;  // fallback: don't copy
+        if (_reply_buf_pos + len + 1 > REPLY_BUF_SIZE) return nullptr;  // overflow
         char* dest = _reply_buf + _reply_buf_pos;
         memcpy(dest, s, len + 1);
         _reply_buf_pos += len + 1;

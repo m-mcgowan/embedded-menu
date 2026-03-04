@@ -2,6 +2,7 @@
 
 #include "../cmd.h"
 #include "../detail/json_parser.h"
+#include "../detail/json_writer.h"
 #include "../registry.h"
 
 namespace emenu {
@@ -101,7 +102,8 @@ private:
         Cmd cmd(_output);
         cmd.set_command_name(cmd_name);
         for (int i = 0; i < n; i++) {
-            if (strcmp(pairs[i].key, "cmd") != 0) {
+            if (strcmp(pairs[i].key, "cmd") != 0 &&
+                strcmp(pairs[i].key, "topic") != 0) {
                 cmd.set_param(pairs[i].key, pairs[i].value);
             }
         }
@@ -113,45 +115,42 @@ private:
             return;
         }
 
-        // Build response from reply fields
-        char resp[256];
-        detail::JsonBuilder jb(resp, sizeof(resp));
-        jb.begin().field("cmd", cmd_name);
+        // Stream response directly to output
+        detail::JsonWriter jw(_output);
+        jw.begin().field("cmd", cmd_name);
 
         if (cmd.has_reply()) {
             for (size_t i = 0; i < cmd.reply_count(); i++) {
                 const auto& f = cmd.reply_field(i);
                 // Detect type from value string
                 if (!f.value) {
-                    jb.field(f.key, static_cast<const char*>(nullptr));
+                    jw.field(f.key, static_cast<const char*>(nullptr));
                 } else if (strcmp(f.value, "true") == 0) {
-                    jb.field(f.key, true);
+                    jw.field(f.key, true);
                 } else if (strcmp(f.value, "false") == 0) {
-                    jb.field(f.key, false);
+                    jw.field(f.key, false);
                 } else {
                     // Try int
                     char* end = nullptr;
                     long lv = strtol(f.value, &end, 10);
                     if (end != f.value && *end == '\0') {
-                        jb.field(f.key, static_cast<int>(lv));
+                        jw.field(f.key, static_cast<int>(lv));
                     } else {
                         // Try float
                         float fv = strtof(f.value, &end);
                         if (end != f.value && *end == '\0') {
-                            jb.field(f.key, fv);
+                            jw.field(f.key, fv);
                         } else {
-                            jb.field(f.key, f.value);
+                            jw.field(f.key, f.value);
                         }
                     }
                 }
             }
         } else {
-            jb.field("ok", true);
+            jw.field("ok", true);
         }
 
-        jb.end();
-        _output.print(resp);
-        _output.end_frame();
+        jw.end();
     }
 
     void _tui(const detail::JsonPair* pairs, int n) {
@@ -164,11 +163,8 @@ private:
             }
         }
         // Always respond with current state
-        char resp[64];
-        detail::JsonBuilder jb(resp, sizeof(resp));
-        jb.begin().field("cmd", "tui").field("enabled", _tui_enabled).end();
-        _output.print(resp);
-        _output.end_frame();
+        detail::JsonWriter jw(_output);
+        jw.begin().field("cmd", "tui").field("enabled", _tui_enabled).end();
     }
 
     void _help(const char* topic) {
@@ -179,80 +175,43 @@ private:
                 _emit_error("help", "not found");
                 return;
             }
-            _output.print("{\"cmd\":\"help\",");
-            _emit_entry_fields(*entry);
-            _output.print("}\n");
-            _output.end_frame();
+            detail::JsonWriter jw(_output);
+            jw.begin().field("cmd", "help");
+            _emit_entry_fields(jw, *entry);
+            jw.end();
             return;
         }
 
         // List all commands
-        _output.print("{\"cmd\":\"help\",\"commands\":[");
-        bool first = true;
+        detail::JsonWriter jw(_output);
+        jw.begin().field("cmd", "help");
+        jw.key("commands").begin_array();
         for (const auto& entry : _registry) {
-            if (!first) _output.print(",");
-            first = false;
-            _output.print("{");
-            _emit_entry_fields(entry);
-            _output.print("}");
+            jw.begin_object();
+            _emit_entry_fields(jw, entry);
+            jw.end_object();
         }
-        _output.print("]}\n");
-        _output.end_frame();
+        jw.end_array();
+        jw.end();
     }
 
-    void _emit_entry_fields(const CommandEntry& entry, bool leading_comma = false) {
-        _output.print(leading_comma ? ",\"name\":\"" : "\"name\":\"");
-        _emit_json_string(entry.name);
-        _output.print("\"");
-        if (entry.help) {
-            _output.print(",\"help\":\"");
-            _emit_json_string(entry.help);
-            _output.print("\"");
-        } else {
-            _output.print(",\"help\":null");
-        }
-        if (entry.group) {
-            _output.print(",\"group\":\"");
-            _emit_json_string(entry.group);
-            _output.print("\"");
-        } else {
-            _output.print(",\"group\":null");
-        }
-        _output.print(",\"aliases\":[");
-        bool first_alias = true;
+    void _emit_entry_fields(detail::JsonWriter& jw, const CommandEntry& entry) {
+        jw.field("name", entry.name);
+        jw.field("help", entry.help);  // null-safe
+        jw.field("group", entry.group);  // null-safe
+        jw.key("aliases").begin_array();
         for (size_t i = 0; i < EMENU_MAX_ALIASES && entry.aliases[i]; i++) {
-            if (!first_alias) _output.print(",");
-            first_alias = false;
-            _output.print("\"");
-            _emit_json_string(entry.aliases[i]);
-            _output.print("\"");
+            jw.value(entry.aliases[i]);
         }
-        _output.print("]");
-    }
-
-    void _emit_json_string(const char* s) {
-        while (*s) {
-            switch (*s) {
-                case '"':  _output.print("\\\""); break;
-                case '\\': _output.print("\\\\"); break;
-                case '\n': _output.print("\\n"); break;
-                case '\r': _output.print("\\r"); break;
-                case '\t': _output.print("\\t"); break;
-                default:   _output.write(static_cast<uint8_t>(*s)); break;
-            }
-            s++;
-        }
+        jw.end_array();
     }
 
     void _emit_error(const char* cmd_name, const char* msg) {
-        char resp[128];
-        detail::JsonBuilder jb(resp, sizeof(resp));
-        jb.begin();
-        if (cmd_name) jb.field("cmd", cmd_name);
-        jb.field("error", msg);
-        jb.end();
-        _output.print(resp);
-        _output.end_frame();
+        detail::JsonWriter jw(_output);
+        jw.begin();
+        if (cmd_name) jw.field("cmd", cmd_name);
+        jw.field("error", msg);
+        jw.end();
     }
 };
 
