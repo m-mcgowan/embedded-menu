@@ -248,4 +248,92 @@ TEST_CASE("tui does not conflict with registered commands") {
     CHECK(strstr(out.str(), "\"ok\":true") != nullptr);
 }
 
+TEST_CASE("topic field does not leak into handler params") {
+    // A handler that checks if it received a "topic" param
+    Registry<8> reg;
+    reg.add("check", {[](Cmd& cmd) {
+        // If topic leaked through, param_str would find it
+        const char* t = cmd.param_str("topic", "ABSENT");
+        cmd.reply("topic_param", t);
+    }});
+
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"check","topic":"leaked"})");
+
+    // topic should NOT appear as a handler param
+    CHECK(strstr(out.str(), "\"topic_param\":\"ABSENT\"") != nullptr);
+}
+
+TEST_CASE("null reply value serializes as null") {
+    // When a reply field has a null value (e.g. from buffer overflow),
+    // the JSON serializer should emit null, not crash.
+    Registry<8> reg;
+    reg.add("nulltest", {[](Cmd& cmd) {
+        cmd.reply("good", "hello");
+        cmd.reply("bad", static_cast<const char*>(nullptr));
+    }});
+
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"nulltest"})");
+
+    CHECK(strstr(out.str(), "\"good\":\"hello\"") != nullptr);
+    CHECK(strstr(out.str(), "\"bad\":null") != nullptr);
+}
+
+TEST_CASE("control chars in help text are escaped") {
+    Registry<8> reg;
+    reg.add("test", {[](Cmd&) {}, "line1\x01line2"});
+
+    BufferWriter<1024> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help"})");
+
+    // \x01 should be escaped as \u0001
+    CHECK(strstr(out.str(), "\\u0001") != nullptr);
+    // Should NOT contain raw control char
+    CHECK(strstr(out.str(), "\x01") == nullptr);
+}
+
+TEST_CASE("control chars in reply string are escaped") {
+    Registry<8> reg;
+    reg.add("ctrl", {[](Cmd& cmd) {
+        cmd.reply("msg", "hello\x02world");
+    }});
+
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"ctrl"})");
+
+    CHECK(strstr(out.str(), "\\u0002") != nullptr);
+}
+
+TEST_CASE("large response streams without truncation") {
+    // With streaming JsonWriter, responses are no longer limited to a
+    // fixed buffer size. This test verifies a response that would have
+    // exceeded the old 256-byte limit now succeeds.
+    Registry<8> reg;
+    reg.add("big", {[](Cmd& cmd) {
+        char big[250];
+        memset(big, 'X', sizeof(big) - 1);
+        big[sizeof(big) - 1] = '\0';
+        cmd.reply("data", big);
+    }});
+
+    BufferWriter<1024> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"big"})");
+
+    CHECK(strstr(out.str(), "\"cmd\":\"big\"") != nullptr);
+    CHECK(strstr(out.str(), "\"data\":\"XXXX") != nullptr);
+    // Verify full 249 X's are present (not truncated)
+    const char* data_start = strstr(out.str(), "\"data\":\"");
+    REQUIRE(data_start != nullptr);
+    data_start += 8;  // skip "data":"
+    int x_count = 0;
+    while (*data_start == 'X') { x_count++; data_start++; }
+    CHECK(x_count == 249);
+}
+
 }  // TEST_SUITE

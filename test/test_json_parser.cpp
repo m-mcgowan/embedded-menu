@@ -125,4 +125,25 @@ TEST_CASE("escapes strings") {
     CHECK(strstr(buf, "hello \\\"world\\\"") != nullptr);
 }
 
+TEST_CASE("escapes control characters") {
+    char buf[128];
+    JsonBuilder jb(buf, sizeof(buf));
+    jb.begin().field("msg", "a\x01" "b\x1f" "c").end();
+    CHECK(strstr(buf, "a\\u0001b\\u001fc") != nullptr);
+}
+
+TEST_CASE("overflow flag") {
+    char buf[32];
+    JsonBuilder jb(buf, sizeof(buf));
+    jb.begin().field("x", "this string is way too long for 32 bytes").end();
+    CHECK(jb.overflowed() == true);
+}
+
+TEST_CASE("no overflow flag when fits") {
+    char buf[64];
+    JsonBuilder jb(buf, sizeof(buf));
+    jb.begin().field("ok", true).end();
+    CHECK(jb.overflowed() == false);
+}
+
 }  // TEST_SUITE

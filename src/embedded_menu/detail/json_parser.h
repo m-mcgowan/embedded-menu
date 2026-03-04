@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -255,7 +256,17 @@ private:
                 case '\n': _append("\\n"); break;
                 case '\r': _append("\\r"); break;
                 case '\t': _append("\\t"); break;
-                default:   _append_char(*s); break;
+                default:
+                    if (static_cast<unsigned char>(*s) < 0x20) {
+                        // Escape control chars as \u00XX
+                        char esc[7];
+                        snprintf(esc, sizeof(esc), "\\u%04x",
+                                 static_cast<unsigned char>(*s));
+                        _append(esc);
+                    } else {
+                        _append_char(*s);
+                    }
+                    break;
             }
             s++;
         }

@@ -92,6 +92,17 @@ class TestMenuClientSend:
         with pytest.raises(TimeoutError):
             client.send("ping")
 
+    def test_send_skips_invalid_json_with_brace(self) -> None:
+        transport = MockTransport()
+        transport.queue_responses(
+            "debug: state={connecting}",
+            '{"cmd":"ping","ok":true}',
+        )
+
+        client = MenuClient(transport=transport)
+        resp = client.send("ping")
+        assert resp["ok"] is True
+
 
 class TestMenuClientDiscover:
     def test_discover(self) -> None:

@@ -9,6 +9,7 @@ FetchContent_MakeAvailable(doctest)
 add_executable(embedded_menu_tests
     test_main.cpp
     test_json_parser.cpp
+    test_json_writer.cpp
     test_cmd.cpp
     test_registry.cpp
     test_json_serial.cpp

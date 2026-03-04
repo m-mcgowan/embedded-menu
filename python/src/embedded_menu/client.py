@@ -158,7 +158,8 @@ class MenuClient:
         """Read lines until we get a valid JSON response.
 
         Handles TUI prompts that may prefix the JSON on the same line
-        (e.g. ``"> {"cmd":"ping","ok":true}"``).
+        (e.g. ``"> {"cmd":"ping","ok":true}"``). Skips lines that
+        contain ``{`` but aren't valid JSON (e.g. debug output).
         """
         deadline = time.monotonic() + self._timeout
         while time.monotonic() < deadline:
@@ -168,7 +169,10 @@ class MenuClient:
                 continue
             pos = line.find("{")
             if pos >= 0:
-                return MenuResponse.from_json_line(line[pos:])
+                try:
+                    return MenuResponse.from_json_line(line[pos:])
+                except (json.JSONDecodeError, ValueError):
+                    continue  # not valid JSON, keep reading
         raise TimeoutError(f"no JSON response within {self._timeout}s")
 
     def _read_text_lines(self, timeout: float) -> list[str]:
