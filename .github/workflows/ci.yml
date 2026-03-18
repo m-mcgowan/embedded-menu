@@ -105,3 +105,53 @@ jobs:
 
       - name: Build
         run: pio run -e ${{ matrix.env }} -d examples/all_interfaces
+
+  integration-tests:
+    name: Integration tests (simulator)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: embedded-menu
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/embedded-bridge
+          path: embedded-bridge
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: embedded-menu/tests/integration
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e . -e ../../../embedded-bridge/python
+
+      - name: Run integration tests
+        working-directory: embedded-menu/tests/integration
+        run: .venv/bin/pytest test_json_commands.py -v
+
+  spa-tests:
+    name: SPA browser tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: tests/integration
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e .
+          .venv/bin/playwright install chromium --with-deps
+
+      - name: Run SPA tests
+        working-directory: tests/integration
+        run: .venv/bin/pytest test_spa.py -v
