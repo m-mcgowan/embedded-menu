@@ -610,20 +610,17 @@ function formatBytes(b) {
 function togglePower(ch) {
     const cur = chState[ch].pwr;
     const next = cur === null ? true : !cur;
-    const param = 'CH' + ch + '_pwr_en';
-    sendRaw(JSON.stringify({ action: 'set', params: { [param]: next } }));
-    // Optimistic update
+    // Firmware expects: {"action":"set","params":{"CH2":{"powerEn":"true"}}}
+    sendRaw(JSON.stringify({ action: 'set', params: { ['CH' + ch]: { powerEn: String(next) } } }));
     chState[ch].pwr = next;
     updateToggle('ch' + ch + '-pwr', next, 'PWR');
-    // Refresh after short delay
     setTimeout(() => sendRaw('{"action":"get","params":["CH' + ch + '"]}'), 300);
 }
 
 function toggleData(ch) {
     const cur = chState[ch].data;
     const next = cur === null ? true : !cur;
-    const param = 'CH' + ch + '_data_en';
-    sendRaw(JSON.stringify({ action: 'set', params: { [param]: next } }));
+    sendRaw(JSON.stringify({ action: 'set', params: { ['CH' + ch]: { dataEn: String(next) } } }));
     chState[ch].data = next;
     updateToggle('ch' + ch + '-data', next, 'DATA');
     setTimeout(() => sendRaw('{"action":"get","params":["CH' + ch + '"]}'), 300);
