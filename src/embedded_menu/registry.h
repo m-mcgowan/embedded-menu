@@ -35,6 +35,9 @@ public:
         for (size_t i = 0; i < EMENU_MAX_ALIASES; i++) {
             e.aliases[i] = opts.aliases[i];
         }
+        for (size_t i = 0; i < EMENU_MAX_PARAM_DEFS; i++) {
+            e.params[i] = opts.params[i];
+        }
         _count++;
         return Result::OK;
     }

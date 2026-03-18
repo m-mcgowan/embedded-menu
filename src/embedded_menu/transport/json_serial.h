@@ -204,6 +204,18 @@ private:
             jw.value(entry.aliases[i]);
         }
         jw.end_array();
+        jw.key("params").begin_array();
+        for (size_t i = 0; i < EMENU_MAX_PARAM_DEFS && entry.params[i].valid(); i++) {
+            const auto& p = entry.params[i];
+            jw.begin_object()
+              .field("name", p.name)
+              .field("type", p.type)
+              .field("required", p.required);
+            if (p.help)        jw.field("help", p.help);
+            if (p.default_val) jw.field("default", p.default_val);
+            jw.end_object();
+        }
+        jw.end_array();
     }
 
     void _emit_error(const char* cmd_name, const char* msg) {

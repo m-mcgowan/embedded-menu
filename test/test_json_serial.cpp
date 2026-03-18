@@ -336,4 +336,82 @@ TEST_CASE("large response streams without truncation") {
     CHECK(x_count == 249);
 }
 
+// ── Schema / param defs ───────────────────────────────────────────────────────
+
+TEST_CASE("help includes empty params array when no params declared") {
+    Registry<8> reg;
+    reg.add("ping", {ping_handler, "Echo a ping"});
+
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help","topic":"ping"})");
+
+    CHECK(strstr(out.str(), "\"params\":[]") != nullptr);
+}
+
+TEST_CASE("help includes param schema when params declared") {
+    Registry<8> reg;
+    reg.add("add", {[](Cmd& cmd) {
+        cmd.reply("sum", cmd.param_int("a", 0) + cmd.param_int("b", 0));
+    }, "Add two numbers", "math", {},
+    {{"a", "int", nullptr, "0"}, {"b", "int", nullptr, "0"}}});
+
+    BufferWriter<1024> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help","topic":"add"})");
+
+    CHECK(strstr(out.str(), "\"params\":[") != nullptr);
+    CHECK(strstr(out.str(), "\"name\":\"a\"") != nullptr);
+    CHECK(strstr(out.str(), "\"type\":\"int\"") != nullptr);
+    CHECK(strstr(out.str(), "\"default\":\"0\"") != nullptr);
+    CHECK(strstr(out.str(), "\"name\":\"b\"") != nullptr);
+}
+
+TEST_CASE("help param schema includes required flag") {
+    Registry<8> reg;
+    reg.add("echo", {[](Cmd& cmd) {
+        cmd.reply("msg", cmd.param_str("msg", ""));
+    }, "Echo a message", nullptr, {},
+    {{"msg", "string", "Message to echo", "", true}}});
+
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help","topic":"echo"})");
+
+    CHECK(strstr(out.str(), "\"required\":true") != nullptr);
+    CHECK(strstr(out.str(), "\"type\":\"string\"") != nullptr);
+}
+
+TEST_CASE("help param schema includes help text when provided") {
+    Registry<8> reg;
+    reg.add("led", {[](Cmd& cmd) {}, "LED control", nullptr, {},
+    {{"state", "bool", "true=on false=off", "false"}}});
+
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help","topic":"led"})");
+
+    CHECK(strstr(out.str(), "\"help\":\"true=on false=off\"") != nullptr);
+    CHECK(strstr(out.str(), "\"type\":\"bool\"") != nullptr);
+    CHECK(strstr(out.str(), "\"default\":\"false\"") != nullptr);
+}
+
+TEST_CASE("help lists param schemas for all commands") {
+    Registry<8> reg;
+    reg.add("ping", {ping_handler, "Ping"});
+    reg.add("add", {[](Cmd& cmd) {}, "Add", nullptr, {},
+    {{"a", "int"}, {"b", "int"}}});
+
+    BufferWriter<1024> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"help"})");
+
+    // ping has empty params, add has two
+    const char* s = out.str();
+    CHECK(strstr(s, "\"name\":\"ping\"") != nullptr);
+    CHECK(strstr(s, "\"name\":\"add\"") != nullptr);
+    CHECK(strstr(s, "\"name\":\"a\"") != nullptr);
+    CHECK(strstr(s, "\"name\":\"b\"") != nullptr);
+}
+
 }  // TEST_SUITE
