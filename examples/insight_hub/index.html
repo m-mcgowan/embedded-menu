@@ -16,9 +16,9 @@
     --ok: #3fb950;
     --warn: #d29922;
     --error: #f85149;
-    --ch1: #58a6ff;
-    --ch2: #3fb950;
-    --ch3: #bc8cff;
+    --voltage: #00e000;   /* TFT_GREEN */
+    --current: #00e5e5;   /* TFT_CYAN  */
+    --current-alert: #ffe000; /* TFT_YELLOW */
     --font: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 }
 
@@ -141,9 +141,9 @@ header .sep { flex: 1; }
 .ch-header.ch2 { background: rgba(63,185,80,0.12); border-bottom: 1px solid rgba(63,185,80,0.3); }
 .ch-header.ch3 { background: rgba(188,140,255,0.12); border-bottom: 1px solid rgba(188,140,255,0.3); }
 
-.ch-header .ch-name.ch1 { color: var(--ch1); }
-.ch-header .ch-name.ch2 { color: var(--ch2); }
-.ch-header .ch-name.ch3 { color: var(--ch3); }
+.ch-header.ch1 .ch-name { color: #58a6ff; }
+.ch-header.ch2 .ch-name { color: #3fb950; }
+.ch-header.ch3 .ch-name { color: #bc8cff; }
 
 .ch-body { padding: 8px 10px; }
 
@@ -170,9 +170,9 @@ header .sep { flex: 1; }
     letter-spacing: 1px;
 }
 
-.meter-val.ch1 { color: var(--ch1); }
-.meter-val.ch2 { color: var(--ch2); }
-.meter-val.ch3 { color: var(--ch3); }
+.meter-val.voltage { color: var(--voltage); }
+.meter-val.current { color: var(--current); }
+.meter-val.current.alert { color: var(--current-alert); }
 
 .ch-controls {
     display: flex;
@@ -283,7 +283,7 @@ header .sep { flex: 1; }
     <h1>USB Insight Hub</h1>
     <div class="sep"></div>
     <button class="btn" id="refresh-btn">↺ Refresh</button>
-    <button class="btn" id="poll-btn">Auto-poll: OFF</button>
+    <button class="btn" id="poll-btn">Auto-poll: ON</button>
     <span id="conn-status" class="badge disconnected">disconnected</span>
 </header>
 
@@ -315,11 +315,11 @@ header .sep { flex: 1; }
                 <div class="ch-body">
                     <div class="meter-row">
                         <div class="meter">
-                            <div class="meter-val ch1" id="ch1-voltage">—</div>
+                            <div class="meter-val voltage" id="ch1-voltage">—</div>
                             <div class="meter-unit">V</div>
                         </div>
                         <div class="meter">
-                            <div class="meter-val ch1" id="ch1-current">—</div>
+                            <div class="meter-val current" id="ch1-current">—</div>
                             <div class="meter-unit">mA</div>
                         </div>
                     </div>
@@ -343,11 +343,11 @@ header .sep { flex: 1; }
                 <div class="ch-body">
                     <div class="meter-row">
                         <div class="meter">
-                            <div class="meter-val ch2" id="ch2-voltage">—</div>
+                            <div class="meter-val voltage" id="ch2-voltage">—</div>
                             <div class="meter-unit">V</div>
                         </div>
                         <div class="meter">
-                            <div class="meter-val ch2" id="ch2-current">—</div>
+                            <div class="meter-val current" id="ch2-current">—</div>
                             <div class="meter-unit">mA</div>
                         </div>
                     </div>
@@ -371,11 +371,11 @@ header .sep { flex: 1; }
                 <div class="ch-body">
                     <div class="meter-row">
                         <div class="meter">
-                            <div class="meter-val ch3" id="ch3-voltage">—</div>
+                            <div class="meter-val voltage" id="ch3-voltage">—</div>
                             <div class="meter-unit">V</div>
                         </div>
                         <div class="meter">
-                            <div class="meter-val ch3" id="ch3-current">—</div>
+                            <div class="meter-val current" id="ch3-current">—</div>
                             <div class="meter-unit">mA</div>
                         </div>
                     </div>
@@ -413,7 +413,7 @@ const wsUrl = urlParams.get('ws') || 'ws://localhost:8765';
 let ws = null;
 let reconnectTimer = null;
 let pollTimer = null;
-let polling = false;
+let polling = true;
 
 // Channel state cache (for toggle buttons)
 const chState = {
@@ -432,6 +432,12 @@ function connect() {
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
         // Auto-fetch state on connect
         sendRaw('{"action":"get","params":["all","CH1_all","CH2_all","CH3_all"]}');
+        // Start auto-poll if enabled
+        if (polling && !pollTimer) {
+            pollTimer = setInterval(() => {
+                sendRaw('{"action":"get","params":["all","CH1","CH2","CH3"]}');
+            }, 2000);
+        }
     };
 
     ws.onmessage = (e) => {
@@ -449,6 +455,7 @@ function connect() {
     ws.onclose = () => {
         setStatus('disconnected');
         log('Disconnected', 'info');
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         if (!reconnectTimer) {
             reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 2000);
         }
@@ -540,7 +547,12 @@ function updatePanels(d) {
         const pfx = 'ch' + i;
 
         if (ch.voltage !== undefined) setEl(pfx + '-voltage', (parseFloat(ch.voltage) / 1000).toFixed(2));
-        if (ch.current !== undefined) setEl(pfx + '-current', parseFloat(ch.current).toFixed(1));
+        if (ch.current !== undefined) {
+            setEl(pfx + '-current', parseFloat(ch.current).toFixed(1));
+            const hasAlert = ch.fwdAlert || ch.backAlert || ch.shortAlert;
+            document.getElementById(pfx + '-current').className =
+                'meter-val current' + (hasAlert ? ' alert' : '');
+        }
 
         if (ch.powerEn !== undefined) {
             chState[i].pwr = ch.powerEn;
@@ -614,7 +626,7 @@ function togglePower(ch) {
     sendRaw(JSON.stringify({ action: 'set', params: { ['CH' + ch]: { powerEn: String(next) } } }));
     chState[ch].pwr = next;
     updateToggle('ch' + ch + '-pwr', next, 'PWR');
-    setTimeout(() => sendRaw('{"action":"get","params":["CH' + ch + '"]}'), 300);
+    setTimeout(() => sendRaw('{"action":"get","params":["CH' + ch + '"]}'), 400);
 }
 
 function toggleData(ch) {
@@ -623,7 +635,7 @@ function toggleData(ch) {
     sendRaw(JSON.stringify({ action: 'set', params: { ['CH' + ch]: { dataEn: String(next) } } }));
     chState[ch].data = next;
     updateToggle('ch' + ch + '-data', next, 'DATA');
-    setTimeout(() => sendRaw('{"action":"get","params":["CH' + ch + '"]}'), 300);
+    setTimeout(() => sendRaw('{"action":"get","params":["CH' + ch + '"]}'), 400);
 }
 
 // ── Refresh / poll ──
@@ -636,11 +648,11 @@ document.getElementById('poll-btn').addEventListener('click', () => {
     polling = !polling;
     document.getElementById('poll-btn').textContent = 'Auto-poll: ' + (polling ? 'ON' : 'OFF');
     if (polling) {
-        pollTimer = setInterval(() => {
+        if (!pollTimer) pollTimer = setInterval(() => {
             sendRaw('{"action":"get","params":["all","CH1","CH2","CH3"]}');
         }, 2000);
     } else {
-        clearInterval(pollTimer);
+        clearInterval(pollTimer); pollTimer = null;
     }
 });
 

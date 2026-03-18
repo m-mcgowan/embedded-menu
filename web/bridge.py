@@ -154,7 +154,7 @@ async def main() -> None:
     log.info("Serial port: %s @ %d", args.port, args.baudrate)
 
     if not args.no_browser:
-        spa_path = Path(__file__).parent / args.spa
+        spa_path = Path(args.spa) if Path(args.spa).is_absolute() else Path.cwd() / args.spa
         url = f"file://{spa_path.resolve()}?ws=ws://localhost:{actual_port}"
         log.info("Opening browser: %s", url)
         webbrowser.open(url)
