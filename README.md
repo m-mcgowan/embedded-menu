@@ -41,6 +41,22 @@ Cloud notes  → [Transport] ────┘
 - **Browser UI** — single-file SPA with serial-to-WebSocket bridge and a
   plugin system for custom dashboards
 
+## Status
+
+| Feature | Design | Docs | Impl | Tests | Examples | Since | Updated |
+|---------|--------|------|------|-------|----------|-------|---------|
+| **Command registry** | [PROPOSAL.md](PROPOSAL.md) | [README](README.md) | [registry.h](src/embedded_menu/registry.h) | [test_registry](test/test_registry.cpp) | [all_interfaces](examples/all_interfaces/) | | |
+| **Cmd handler framework** | [PROPOSAL.md](PROPOSAL.md) | [README](README.md) | [cmd.h](src/embedded_menu/cmd.h) | [test_cmd](test/test_cmd.cpp) | [all_interfaces](examples/all_interfaces/) | | |
+| **Writer abstraction** | [PROPOSAL.md](PROPOSAL.md) | [README](README.md) | [writer.h](src/embedded_menu/writer.h) | | | | |
+| **JSON serial transport** | [PROPOSAL.md](PROPOSAL.md) | [README](README.md) | [json_serial.h](src/embedded_menu/transport/json_serial.h) | [test_json_serial](test/test_json_serial.cpp) | [all_interfaces](examples/all_interfaces/) | | |
+| **Basic serial console** | [PROPOSAL.md](PROPOSAL.md) | [README](README.md) | [basic_serial.h](src/embedded_menu/console/basic_serial.h) | [test_basic_serial](test/test_basic_serial.cpp) | [all_interfaces](examples/all_interfaces/) | | |
+| **HDLC framing** | [PROPOSAL.md](PROPOSAL.md) | [README](README.md) | [hdlc.h](src/embedded_menu/framing/hdlc.h) | [test_hdlc](test/test_hdlc.cpp) | | | |
+| **SLIP framing** | [PROPOSAL.md](PROPOSAL.md) | [README](README.md) | [slip.h](src/embedded_menu/framing/slip.h) | [test_slip](test/test_slip.cpp) | | | |
+| **COBS framing** | [PROPOSAL.md](PROPOSAL.md) | [README](README.md) | [cobs.h](src/embedded_menu/framing/cobs.h) | [test_cobs](test/test_cobs.cpp) | | | |
+| **JSON parser/writer** | [PROPOSAL.md](PROPOSAL.md) | | [json_parser.h](src/embedded_menu/detail/json_parser.h) | [test_json_parser](test/test_json_parser.cpp) | | | |
+| **Web UI** | | [README](README.md) | [index.html](web/index.html), [bridge.py](web/bridge.py) | | | | |
+| **Python client** | | | [python/](python/) | | | | |
+
 ## Quick start
 
 ### PlatformIO
