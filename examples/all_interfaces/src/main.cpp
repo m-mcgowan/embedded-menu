@@ -123,11 +123,15 @@ void setup() {
 #endif
 
     registry.add("ping",  {ping_handler,  "Echo a ping"});
-    registry.add("echo",  {echo_handler,  "Echo back a message", nullptr, {"e"}});
-    registry.add("led",   {led_handler,   "Control built-in LED", "hw"});
-    registry.add("add",   {add_handler,   "Add two numbers", "math"});
+    registry.add("echo",  {echo_handler,  "Echo back a message", nullptr, {"e"},
+        {{"msg", "string", "Message to echo", "", true}}});
+    registry.add("led",   {led_handler,   "Control built-in LED", "hw", {},
+        {{"state", "bool", "true = on, false = off", "false"}}});
+    registry.add("add",   {add_handler,   "Add two numbers", "math", {},
+        {{"a", "int", nullptr, "0"}, {"b", "int", nullptr, "0"}}});
     registry.add("info",  {info_handler,  "Device info", "system"});
-    registry.add("sleep", {sleep_handler, "Sleep for N ms", "system"});
+    registry.add("sleep", {sleep_handler, "Sleep for N ms (deep sleep)", "system", {},
+        {{"ms", "int", nullptr, "5000"}}});
 
     serial_writer.println("embedded-menu example — type 'help' or send JSON");
     console.set_show_prompt(true);

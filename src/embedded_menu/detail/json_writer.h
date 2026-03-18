@@ -138,7 +138,7 @@ public:
 private:
     Writer& _out;
 
-    static constexpr size_t MAX_DEPTH = 4;
+    static constexpr size_t MAX_DEPTH = 8;
     bool _first[MAX_DEPTH];
     size_t _depth;
     bool _after_key = false;  // true after key(), suppresses next comma
