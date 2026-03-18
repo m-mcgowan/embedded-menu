@@ -1,31 +1,37 @@
 """Integration tests for embedded-menu: JSON transport, console, and cross-interface.
 
-Run against a device flashed with examples/all_interfaces.
+Runs against a PTY simulator by default (hardware-neutral, CI-friendly).
+Pass --port to run against a real device instead.
 
 Usage:
-    pytest test_json_commands.py --port /dev/cu.usbmodem1234
+    pytest test_json_commands.py                        # simulator
+    pytest test_json_commands.py --port /dev/cu.usbmodem1234  # hardware
 """
 
 from __future__ import annotations
 
 import pytest
 
+from firmware_sim import FirmwareSimulator
 from menu_client import MenuClient
-
-
-def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption("--port", required=True, help="Serial port for the device")
-    parser.addoption("--baudrate", default=115200, type=int, help="Baud rate")
 
 
 @pytest.fixture(scope="session")
 def client(request: pytest.FixtureRequest) -> MenuClient:
     port = request.config.getoption("--port")
     baudrate = request.config.getoption("--baudrate")
-    c = MenuClient(port, baudrate=baudrate)
-    c.connect()
-    yield c
-    c.disconnect()
+
+    if port:
+        c = MenuClient(port, baudrate=baudrate)
+        c.connect()
+        yield c
+        c.disconnect()
+    else:
+        with FirmwareSimulator() as sim:
+            c = MenuClient(sim.port, baudrate=baudrate)
+            c.connect()
+            yield c
+            c.disconnect()
 
 
 # ── JSON transport ──
@@ -81,7 +87,7 @@ class TestJsonInfo:
         resp = client.send("info")
         assert resp["firmware"] == "embedded-menu-example"
         assert resp["version"] == "0.1.0"
-        assert resp["board"] in ("esp32s3", "pico", "unknown")
+        assert resp["board"] in ("esp32s3", "pico", "unknown", "sim")
         assert isinstance(resp["uptime_ms"], int)
 
 
