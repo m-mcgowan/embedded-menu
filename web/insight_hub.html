@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>USB Insight Hub</title>
+<style>
+:root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --error: #f85149;
+    --ch1: #58a6ff;
+    --ch2: #3fb950;
+    --ch3: #bc8cff;
+    --font: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+header h1 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+header .sep { flex: 1; }
+
+.badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid;
+}
+
+#conn-status.connected { color: var(--ok); border-color: var(--ok); }
+#conn-status.disconnected { color: var(--error); border-color: var(--error); }
+#conn-status.connecting { color: var(--warn); border-color: var(--warn); }
+
+.btn {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+    font-family: var(--font);
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+.btn:hover { background: var(--border); }
+.btn.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+.btn.primary:hover { opacity: 0.85; }
+
+.main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Left: channel panels */
+#panels {
+    width: 360px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.section {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+}
+
+.section-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+}
+
+/* System info */
+.kv-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+}
+
+.kv { display: flex; justify-content: space-between; }
+.kv .key { color: var(--text-dim); font-size: 12px; }
+.kv .val { color: var(--text); font-size: 12px; text-align: right; }
+
+/* Channel panels */
+.ch-panel {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.ch-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ch-header.ch1 { background: rgba(88,166,255,0.12); border-bottom: 1px solid rgba(88,166,255,0.3); }
+.ch-header.ch2 { background: rgba(63,185,80,0.12); border-bottom: 1px solid rgba(63,185,80,0.3); }
+.ch-header.ch3 { background: rgba(188,140,255,0.12); border-bottom: 1px solid rgba(188,140,255,0.3); }
+
+.ch-header .ch-name.ch1 { color: var(--ch1); }
+.ch-header .ch-name.ch2 { color: var(--ch2); }
+.ch-header .ch-name.ch3 { color: var(--ch3); }
+
+.ch-body { padding: 8px 10px; }
+
+.meter-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 6px;
+}
+
+.meter {
+    flex: 1;
+    text-align: center;
+}
+
+.meter .meter-val {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -1px;
+}
+
+.meter .meter-unit {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+}
+
+.meter-val.ch1 { color: var(--ch1); }
+.meter-val.ch2 { color: var(--ch2); }
+.meter-val.ch3 { color: var(--ch3); }
+
+.ch-controls {
+    display: flex;
+    gap: 6px;
+}
+
+.toggle-btn {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 0;
+    font-family: var(--font);
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.15s;
+    background: var(--surface2);
+    color: var(--text-dim);
+}
+
+.toggle-btn.on { background: rgba(63,185,80,0.15); color: var(--ok); border-color: var(--ok); }
+.toggle-btn.off { background: rgba(248,81,73,0.10); color: var(--error); border-color: var(--error); }
+
+.alert-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.alert-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+}
+
+.alert-badge.alert-on { background: rgba(248,81,73,0.2); color: var(--error); border-color: var(--error); }
+
+/* Right: terminal */
+#terminal-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#terminal {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.line { white-space: pre-wrap; word-break: break-all; margin: 1px 0; }
+.line.sent { color: #58a6ff; }
+.line.sent::before { content: '▸ '; color: var(--text-dim); }
+.line.recv { color: #3fb950; }
+.line.recv::before { content: '◂ '; color: var(--text-dim); }
+.line.info { color: var(--text-dim); font-style: italic; }
+.line.err  { color: var(--error); }
+
+#input-bar {
+    display: flex;
+    gap: 0;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+#cmd-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-right: none;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 4px 0 0 4px;
+    outline: none;
+}
+
+#cmd-input:focus { border-color: var(--accent); }
+
+#send-btn {
+    background: var(--accent);
+    color: #000;
+    border: 1px solid var(--accent);
+    border-left: none;
+    padding: 6px 14px;
+    font-family: var(--font);
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 0 4px 4px 0;
+}
+
+#send-btn:hover { opacity: 0.85; }
+
+.uptime-val { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>USB Insight Hub</h1>
+    <div class="sep"></div>
+    <button class="btn" id="refresh-btn">↺ Refresh</button>
+    <button class="btn" id="poll-btn">Auto-poll: OFF</button>
+    <span id="conn-status" class="badge disconnected">disconnected</span>
+</header>
+
+<div class="main">
+    <!-- Left: panels -->
+    <div id="panels">
+        <!-- System section -->
+        <div class="section">
+            <div class="section-title">System</div>
+            <div id="sys-info" class="kv-grid">
+                <div class="kv"><span class="key">status</span><span class="val" id="si-pcConnected">—</span></div>
+                <div class="kv"><span class="key">uptime</span><span class="val uptime-val" id="si-uptime">—</span></div>
+                <div class="kv"><span class="key">vbus</span><span class="val" id="si-vbus">—</span></div>
+                <div class="kv"><span class="key">free heap</span><span class="val" id="si-freeHeap">—</span></div>
+                <div class="kv"><span class="key">firmware</span><span class="val" id="si-cpu_ver">—</span></div>
+                <div class="kv"><span class="key">meter</span><span class="val" id="si-meterInit">—</span></div>
+            </div>
+        </div>
+
+        <!-- Channel sections -->
+        <div class="section" id="channels-section">
+            <div class="section-title">Channels</div>
+            <!-- CH1 -->
+            <div class="ch-panel" id="ch1-panel">
+                <div class="ch-header ch1">
+                    <span class="ch-name ch1">CH 1</span>
+                    <span id="ch1-usb" style="color:var(--text-dim);font-weight:400;font-size:11px;"></span>
+                </div>
+                <div class="ch-body">
+                    <div class="meter-row">
+                        <div class="meter">
+                            <div class="meter-val ch1" id="ch1-voltage">—</div>
+                            <div class="meter-unit">V</div>
+                        </div>
+                        <div class="meter">
+                            <div class="meter-val ch1" id="ch1-current">—</div>
+                            <div class="meter-unit">mA</div>
+                        </div>
+                    </div>
+                    <div class="ch-controls">
+                        <button class="toggle-btn" id="ch1-pwr" onclick="togglePower(1)">PWR —</button>
+                        <button class="toggle-btn" id="ch1-data" onclick="toggleData(1)">DATA —</button>
+                    </div>
+                    <div class="alert-row">
+                        <span class="alert-badge" id="ch1-fwdAlert">fwd ✓</span>
+                        <span class="alert-badge" id="ch1-backAlert">back ✓</span>
+                        <span class="alert-badge" id="ch1-shortAlert">short ✓</span>
+                    </div>
+                </div>
+            </div>
+            <!-- CH2 -->
+            <div class="ch-panel" id="ch2-panel">
+                <div class="ch-header ch2">
+                    <span class="ch-name ch2">CH 2</span>
+                    <span id="ch2-usb" style="color:var(--text-dim);font-weight:400;font-size:11px;"></span>
+                </div>
+                <div class="ch-body">
+                    <div class="meter-row">
+                        <div class="meter">
+                            <div class="meter-val ch2" id="ch2-voltage">—</div>
+                            <div class="meter-unit">V</div>
+                        </div>
+                        <div class="meter">
+                            <div class="meter-val ch2" id="ch2-current">—</div>
+                            <div class="meter-unit">mA</div>
+                        </div>
+                    </div>
+                    <div class="ch-controls">
+                        <button class="toggle-btn" id="ch2-pwr" onclick="togglePower(2)">PWR —</button>
+                        <button class="toggle-btn" id="ch2-data" onclick="toggleData(2)">DATA —</button>
+                    </div>
+                    <div class="alert-row">
+                        <span class="alert-badge" id="ch2-fwdAlert">fwd ✓</span>
+                        <span class="alert-badge" id="ch2-backAlert">back ✓</span>
+                        <span class="alert-badge" id="ch2-shortAlert">short ✓</span>
+                    </div>
+                </div>
+            </div>
+            <!-- CH3 -->
+            <div class="ch-panel" id="ch3-panel">
+                <div class="ch-header ch3">
+                    <span class="ch-name ch3">CH 3</span>
+                    <span id="ch3-usb" style="color:var(--text-dim);font-weight:400;font-size:11px;"></span>
+                </div>
+                <div class="ch-body">
+                    <div class="meter-row">
+                        <div class="meter">
+                            <div class="meter-val ch3" id="ch3-voltage">—</div>
+                            <div class="meter-unit">V</div>
+                        </div>
+                        <div class="meter">
+                            <div class="meter-val ch3" id="ch3-current">—</div>
+                            <div class="meter-unit">mA</div>
+                        </div>
+                    </div>
+                    <div class="ch-controls">
+                        <button class="toggle-btn" id="ch3-pwr" onclick="togglePower(3)">PWR —</button>
+                        <button class="toggle-btn" id="ch3-data" onclick="toggleData(3)">DATA —</button>
+                    </div>
+                    <div class="alert-row">
+                        <span class="alert-badge" id="ch3-fwdAlert">fwd ✓</span>
+                        <span class="alert-badge" id="ch3-backAlert">back ✓</span>
+                        <span class="alert-badge" id="ch3-shortAlert">short ✓</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: terminal -->
+    <div id="terminal-wrap">
+        <div id="terminal"></div>
+        <div id="input-bar">
+            <input id="cmd-input" type="text" placeholder='{"action":"get","params":["all"]}  or  get all'
+                   autocomplete="off" spellcheck="false">
+            <button id="send-btn">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── WebSocket connection ──
+
+const urlParams = new URLSearchParams(window.location.search);
+const wsUrl = urlParams.get('ws') || 'ws://localhost:8765';
+
+let ws = null;
+let reconnectTimer = null;
+let pollTimer = null;
+let polling = false;
+
+// Channel state cache (for toggle buttons)
+const chState = {
+    1: { pwr: null, data: null },
+    2: { pwr: null, data: null },
+    3: { pwr: null, data: null },
+};
+
+function connect() {
+    setStatus('connecting');
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        setStatus('connected');
+        log('Connected to ' + wsUrl, 'info');
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        // Auto-fetch state on connect
+        sendRaw('{"action":"get","params":["all","CH1_all","CH2_all","CH3_all"]}');
+    };
+
+    ws.onmessage = (e) => {
+        const text = e.data.trim();
+        if (!text) return;
+        log(text, 'recv');
+        try {
+            const data = JSON.parse(text);
+            if (data.status === 'ok' && data.data) {
+                updatePanels(data.data);
+            }
+        } catch (_) {}
+    };
+
+    ws.onclose = () => {
+        setStatus('disconnected');
+        log('Disconnected', 'info');
+        if (!reconnectTimer) {
+            reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 2000);
+        }
+    };
+
+    ws.onerror = () => {};
+}
+
+function setStatus(s) {
+    const el = document.getElementById('conn-status');
+    el.textContent = s;
+    el.className = 'badge ' + s;
+}
+
+// ── Helpers: send ──
+
+function sendRaw(text) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    log(text, 'sent');
+    ws.send(text);
+}
+
+function send(text) {
+    text = text.trim();
+    if (!text) return;
+    // Shorthand: "get all" → JSON
+    if (!text.startsWith('{')) {
+        const parts = text.split(/\s+/);
+        const action = parts[0];
+        const params = parts.slice(1);
+        const obj = params.length ? { action, params } : { action };
+        text = JSON.stringify(obj);
+    }
+    sendRaw(text);
+}
+
+// ── Terminal ──
+
+const terminal = document.getElementById('terminal');
+const cmdInput = document.getElementById('cmd-input');
+const history = [];
+let hIdx = -1;
+
+function log(text, cls) {
+    const d = document.createElement('div');
+    d.className = 'line ' + cls;
+    d.textContent = text;
+    terminal.appendChild(d);
+    terminal.scrollTop = terminal.scrollHeight;
+}
+
+document.getElementById('send-btn').addEventListener('click', () => {
+    send(cmdInput.value);
+    cmdInput.value = '';
+    cmdInput.focus();
+});
+
+cmdInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        const v = cmdInput.value.trim();
+        if (v) { if (history[history.length-1] !== v) history.push(v); hIdx = history.length; }
+        send(cmdInput.value);
+        cmdInput.value = '';
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (hIdx > 0) cmdInput.value = history[--hIdx];
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (hIdx < history.length - 1) { cmdInput.value = history[++hIdx]; }
+        else { hIdx = history.length; cmdInput.value = ''; }
+    }
+});
+
+// ── Panel updates ──
+
+function updatePanels(d) {
+    setIfPresent('si-pcConnected', d.pcConnected !== undefined
+        ? (d.pcConnected ? '● connected' : '○ none') : null,
+        d.pcConnected ? 'color:var(--ok)' : 'color:var(--text-dim)');
+    setIfPresent('si-uptime', d.uptime !== undefined ? formatUptime(d.uptime) : null);
+    setIfPresent('si-vbus', d.vbus !== undefined ? (parseFloat(d.vbus) / 1000).toFixed(2) + ' V' : null);
+    setIfPresent('si-freeHeap', d.freeHeap !== undefined ? formatBytes(d.freeHeap) : null);
+    setIfPresent('si-cpu_ver', d.cpu_ver || null);
+    setIfPresent('si-meterInit', d.meterInit || null);
+
+    for (let i = 1; i <= 3; i++) {
+        const ch = d['CH' + i];
+        if (!ch) continue;
+        const pfx = 'ch' + i;
+
+        if (ch.voltage !== undefined) setEl(pfx + '-voltage', (parseFloat(ch.voltage) / 1000).toFixed(2));
+        if (ch.current !== undefined) setEl(pfx + '-current', parseFloat(ch.current).toFixed(1));
+
+        if (ch.powerEn !== undefined) {
+            chState[i].pwr = ch.powerEn;
+            updateToggle(pfx + '-pwr', ch.powerEn, 'PWR');
+        }
+        if (ch.dataEn !== undefined) {
+            chState[i].data = ch.dataEn;
+            updateToggle(pfx + '-data', ch.dataEn, 'DATA');
+        }
+
+        updateAlert(pfx + '-fwdAlert', ch.fwdAlert, 'fwd');
+        updateAlert(pfx + '-backAlert', ch.backAlert, 'back');
+        updateAlert(pfx + '-shortAlert', ch.shortAlert, 'short');
+
+        if (ch.usbType) document.getElementById(pfx + '-usb').textContent = ch.usbType;
+    }
+}
+
+function setEl(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+}
+
+function setIfPresent(id, val, style) {
+    if (val === null) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    if (style) el.setAttribute('style', style);
+}
+
+function updateToggle(id, on, label) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.textContent = label + ' ' + (on ? 'ON' : 'OFF');
+    btn.className = 'toggle-btn ' + (on ? 'on' : 'off');
+}
+
+function updateAlert(id, active, label) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (active) {
+        el.textContent = label + ' ⚠';
+        el.className = 'alert-badge alert-on';
+    } else {
+        el.textContent = label + ' ✓';
+        el.className = 'alert-badge';
+    }
+}
+
+function formatUptime(ms) {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    if (h > 0) return h + 'h ' + (m % 60) + 'm';
+    if (m > 0) return m + 'm ' + (s % 60) + 's';
+    return s + 's';
+}
+
+function formatBytes(b) {
+    if (b > 1024) return (b / 1024).toFixed(1) + ' KB';
+    return b + ' B';
+}
+
+// ── Channel controls ──
+
+function togglePower(ch) {
+    const cur = chState[ch].pwr;
+    const next = cur === null ? true : !cur;
+    const param = 'CH' + ch + '_pwr_en';
+    sendRaw(JSON.stringify({ action: 'set', params: { [param]: next } }));
+    // Optimistic update
+    chState[ch].pwr = next;
+    updateToggle('ch' + ch + '-pwr', next, 'PWR');
+    // Refresh after short delay
+    setTimeout(() => sendRaw('{"action":"get","params":["CH' + ch + '"]}'), 300);
+}
+
+function toggleData(ch) {
+    const cur = chState[ch].data;
+    const next = cur === null ? true : !cur;
+    const param = 'CH' + ch + '_data_en';
+    sendRaw(JSON.stringify({ action: 'set', params: { [param]: next } }));
+    chState[ch].data = next;
+    updateToggle('ch' + ch + '-data', next, 'DATA');
+    setTimeout(() => sendRaw('{"action":"get","params":["CH' + ch + '"]}'), 300);
+}
+
+// ── Refresh / poll ──
+
+document.getElementById('refresh-btn').addEventListener('click', () => {
+    sendRaw('{"action":"get","params":["all","CH1_all","CH2_all","CH3_all"]}');
+});
+
+document.getElementById('poll-btn').addEventListener('click', () => {
+    polling = !polling;
+    document.getElementById('poll-btn').textContent = 'Auto-poll: ' + (polling ? 'ON' : 'OFF');
+    if (polling) {
+        pollTimer = setInterval(() => {
+            sendRaw('{"action":"get","params":["all","CH1","CH2","CH3"]}');
+        }, 2000);
+    } else {
+        clearInterval(pollTimer);
+    }
+});
+
+// ── Start ──
+
+connect();
+cmdInput.focus();
+</script>
+</body>
+</html>

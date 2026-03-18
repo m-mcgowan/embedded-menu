@@ -131,6 +131,11 @@ async def main() -> None:
     parser.add_argument("--port", required=True, help="Serial port")
     parser.add_argument("--baudrate", type=int, default=115200)
     parser.add_argument("--ws-port", type=int, default=0, help="WebSocket server port (0 = auto)")
+    parser.add_argument(
+        "--spa",
+        default="index.html",
+        help="SPA filename to open (default: index.html)",
+    )
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
@@ -149,7 +154,7 @@ async def main() -> None:
     log.info("Serial port: %s @ %d", args.port, args.baudrate)
 
     if not args.no_browser:
-        spa_path = Path(__file__).parent / "index.html"
+        spa_path = Path(__file__).parent / args.spa
         url = f"file://{spa_path.resolve()}?ws=ws://localhost:{actual_port}"
         log.info("Opening browser: %s", url)
         webbrowser.open(url)
