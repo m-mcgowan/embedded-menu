@@ -13,6 +13,7 @@ add_executable(embedded_menu_tests
     test_cmd.cpp
     test_registry.cpp
     test_json_serial.cpp
+    test_access.cpp
     test_basic_serial.cpp
     test_crc16.cpp
     test_hdlc.cpp

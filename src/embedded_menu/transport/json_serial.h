@@ -52,10 +52,20 @@ public:
     /// to suppress TUI output while it drives commands programmatically.
     bool tui_enabled() const { return _tui_enabled; }
 
+    /// The session's access level. A command whose `access` is above it is
+    /// refused ("not permitted") without running, and `help` does not list it.
+    /// Defaults to the maximum, so a registry without access levels behaves as
+    /// before.
+    void set_access(uint8_t level) { _access = level; }
+    uint8_t access() const { return _access; }
+
     void reset() { _line_pos = 0; }
 
 private:
+    bool _permitted(const CommandEntry& entry) const { return entry.access <= _access; }
+
     bool _tui_enabled = true;
+    uint8_t _access = 0xFF;
     Registry<N>& _registry;
     Writer& _output;
 
@@ -108,12 +118,17 @@ private:
             }
         }
 
-        // Dispatch
-        Result result = _registry.execute(cmd_name, cmd);
-        if (result == Result::NOT_FOUND) {
+        // Dispatch, if the session may run it
+        const CommandEntry* entry = _registry.find(cmd_name);
+        if (!entry) {
             _emit_error(cmd_name, "not found");
             return;
         }
+        if (!_permitted(*entry)) {
+            _emit_error(cmd_name, "not permitted");
+            return;
+        }
+        _registry.execute(cmd_name, cmd);
 
         // Stream response directly to output
         detail::JsonWriter jw(_output);
@@ -171,7 +186,7 @@ private:
         if (topic && *topic) {
             // Single command detail
             const auto* entry = _registry.find(topic);
-            if (!entry) {
+            if (!entry || !_permitted(*entry)) {
                 _emit_error("help", "not found");
                 return;
             }
@@ -187,6 +202,7 @@ private:
         jw.begin().field("cmd", "help");
         jw.key("commands").begin_array();
         for (const auto& entry : _registry) {
+            if (!_permitted(entry)) continue;
             jw.begin_object();
             _emit_entry_fields(jw, entry);
             jw.end_object();

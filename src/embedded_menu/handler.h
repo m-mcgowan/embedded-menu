@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 namespace emenu {
@@ -44,6 +45,8 @@ struct CommandEntry {
     const char* group = nullptr;
     const char* aliases[EMENU_MAX_ALIASES] = {};
     ParamDef params[EMENU_MAX_PARAM_DEFS] = {};
+    /// Minimum access level a session needs to run this command (0 = anyone).
+    uint8_t access = 0;
 
     bool valid() const { return name != nullptr && handler != nullptr; }
 
@@ -65,6 +68,9 @@ struct RegistrationOptions {
     const char* group = nullptr;
     const char* aliases[EMENU_MAX_ALIASES] = {};
     ParamDef params[EMENU_MAX_PARAM_DEFS] = {};
+    /// Minimum access level a session needs to run the command (0 = anyone).
+    /// The levels are the application's: e.g. 1 = read, 2 = write.
+    uint8_t access = 0;
 };
 
 }  // namespace emenu
