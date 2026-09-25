@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <embedded_menu/transport/json_serial.h>
 #include <string.h>
+#include <math.h>
 
 using namespace emenu;
 
@@ -415,3 +416,18 @@ TEST_CASE("help lists param schemas for all commands") {
 }
 
 }  // TEST_SUITE
+
+TEST_CASE("a NaN or infinite reply is written as null, which is JSON") {
+    Registry<8> reg;
+    reg.add("reading", {[](Cmd& cmd) {
+        cmd.reply("volts", static_cast<float>(NAN));
+        cmd.reply("amps", static_cast<float>(INFINITY));
+    }});
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"reading"})");
+    CHECK(strstr(out.str(), "\"volts\":null") != nullptr);
+    CHECK(strstr(out.str(), "\"amps\":null") != nullptr);
+    CHECK(strstr(out.str(), "nan") == nullptr);
+    CHECK(strstr(out.str(), "inf") == nullptr);
+}
