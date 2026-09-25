@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../writer.h"
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -109,6 +110,10 @@ public:
         _out.write(static_cast<uint8_t>('"'));
         _escaped(k);
         _out.print("\":");
+        if (!isfinite(value)) {   // NaN and infinities aren't JSON numbers
+            _out.print("null");
+            return *this;
+        }
         char buf[24];
         snprintf(buf, sizeof(buf), "%.*f", digits, static_cast<double>(value));
         _out.print(buf);
