@@ -38,6 +38,7 @@ public:
         for (size_t i = 0; i < EMENU_MAX_PARAM_DEFS; i++) {
             e.params[i] = opts.params[i];
         }
+        e.access = opts.access;
         _count++;
         return Result::OK;
     }
