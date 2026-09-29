@@ -6,8 +6,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef EMENU_MAX_VALUE_LEN
+/// Longest parameter value (unescaped, including the terminator) a JSON line can
+/// carry. Values that do not fit are rejected (JSON_PARSE_TOO_LONG), never cut.
+#define EMENU_MAX_VALUE_LEN 64
+#endif
+
 namespace emenu {
 namespace detail {
+
+/// json_parse_flat(): a key or value did not fit its buffer.
+constexpr int JSON_PARSE_TOO_LONG = -2;
 
 /// Parsed value type from JSON.
 enum class JsonTokenType {
@@ -23,7 +32,7 @@ enum class JsonTokenType {
 /// A parsed key-value pair from a flat JSON object.
 struct JsonPair {
     char key[32];
-    char value[64];
+    char value[EMENU_MAX_VALUE_LEN];
     JsonTokenType type;
 };
 
@@ -34,9 +43,12 @@ inline const char* json_skip_ws(const char* p) {
 }
 
 /// Parse a JSON string (starting after the opening "). Writes into buf.
-/// Returns pointer past the closing " or nullptr on error.
-inline const char* json_parse_string(const char* p, char* buf, size_t buf_size) {
+/// Returns pointer past the closing " or nullptr on error. A string that does not
+/// fit buf is an error too (too_long set), never a silently shortened value.
+inline const char* json_parse_string(const char* p, char* buf, size_t buf_size,
+                                     bool* too_long = nullptr) {
     size_t i = 0;
+    bool overflow = false;
     while (*p && *p != '"') {
         if (*p == '\\') {
             p++;
@@ -50,27 +62,33 @@ inline const char* json_parse_string(const char* p, char* buf, size_t buf_size) 
                 case 't':  esc = '\t'; break;
                 default:   esc = *p; break;  // best-effort
             }
-            if (i < buf_size - 1) buf[i++] = esc;
+            if (i < buf_size - 1) buf[i++] = esc; else overflow = true;
             p++;
         } else {
-            if (i < buf_size - 1) buf[i++] = *p;
+            if (i < buf_size - 1) buf[i++] = *p; else overflow = true;
             p++;
         }
     }
     buf[i] = '\0';
-    if (*p != '"') return nullptr;
+    if (too_long) *too_long = overflow;
+    if (*p != '"' || overflow) return nullptr;
     return p + 1;  // skip closing "
 }
 
 /// Parse a flat JSON object into key-value pairs.
-/// Returns number of pairs parsed, or -1 on error.
+/// Returns number of pairs parsed, -1 on a syntax error, or JSON_PARSE_TOO_LONG
+/// when a key or value does not fit its buffer (EMENU_MAX_VALUE_LEN for values).
 /// Only handles flat objects: {"key":"val","num":42,"flag":true}
-inline int json_parse_flat(const char* input, JsonPair* pairs, size_t max_pairs) {
+/// @param parsed if given, set to the number of pairs completed before an error --
+///        so a caller can still name the command of a line it rejects.
+inline int json_parse_flat(const char* input, JsonPair* pairs, size_t max_pairs,
+                           int* parsed = nullptr) {
+    int count = 0;
+    if (parsed) *parsed = 0;
+
     const char* p = json_skip_ws(input);
     if (*p != '{') return -1;
     p++;
-
-    int count = 0;
 
     p = json_skip_ws(p);
     if (*p == '}') return 0;  // empty object
@@ -82,8 +100,9 @@ inline int json_parse_flat(const char* input, JsonPair* pairs, size_t max_pairs)
         p = json_skip_ws(p);
         if (*p != '"') return -1;
         p++;
-        p = json_parse_string(p, pairs[count].key, sizeof(pairs[count].key));
-        if (!p) return -1;
+        bool too_long = false;
+        p = json_parse_string(p, pairs[count].key, sizeof(pairs[count].key), &too_long);
+        if (!p) return too_long ? JSON_PARSE_TOO_LONG : -1;
 
         // Colon
         p = json_skip_ws(p);
@@ -96,8 +115,8 @@ inline int json_parse_flat(const char* input, JsonPair* pairs, size_t max_pairs)
         if (*p == '"') {
             // String value
             p++;
-            p = json_parse_string(p, pairs[count].value, sizeof(pairs[count].value));
-            if (!p) return -1;
+            p = json_parse_string(p, pairs[count].value, sizeof(pairs[count].value), &too_long);
+            if (!p) return too_long ? JSON_PARSE_TOO_LONG : -1;
             pairs[count].type = JsonTokenType::STRING;
         } else if (*p == 't' && strncmp(p, "true", 4) == 0) {
             strcpy(pairs[count].value, "true");
@@ -132,7 +151,7 @@ inline int json_parse_flat(const char* input, JsonPair* pairs, size_t max_pairs)
 
             if (end == start) return -1;
             size_t vlen = static_cast<size_t>(end - start);
-            if (vlen >= sizeof(pairs[count].value)) vlen = sizeof(pairs[count].value) - 1;
+            if (vlen >= sizeof(pairs[count].value)) return JSON_PARSE_TOO_LONG;
             memcpy(pairs[count].value, start, vlen);
             pairs[count].value[vlen] = '\0';
             p = end;
@@ -141,6 +160,7 @@ inline int json_parse_flat(const char* input, JsonPair* pairs, size_t max_pairs)
         }
 
         count++;
+        if (parsed) *parsed = count;
 
         // Comma or end
         p = json_skip_ws(p);

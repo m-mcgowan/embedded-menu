@@ -29,15 +29,21 @@ public:
         if (c == '\n' || c == '\r') {
             if (_line_pos > 0) {
                 _line_buf[_line_pos] = '\0';
-                _dispatch(_line_buf);
+                if (_line_overflow) {
+                    _reject(_line_buf, "line too long");
+                } else {
+                    _dispatch(_line_buf);
+                }
                 _line_pos = 0;
             }
+            _line_overflow = false;
             return;
         }
         if (_line_pos < LINE_BUF_SIZE - 1) {
             _line_buf[_line_pos++] = static_cast<char>(c);
+        } else {
+            _line_overflow = true;   // the rest of the line is dropped; reported at its end
         }
-        // else: silently drop overflow characters until newline
     }
 
     void process_line(const char* line) {
@@ -72,12 +78,35 @@ private:
     static constexpr size_t LINE_BUF_SIZE = 256;
     char _line_buf[LINE_BUF_SIZE];
     size_t _line_pos;
+    bool _line_overflow = false;
+
+    /// The "cmd" among the first n parsed pairs, or null.
+    static const char* _cmd_in(const detail::JsonPair* pairs, int n) {
+        for (int i = 0; i < n; i++) {
+            if (strcmp(pairs[i].key, "cmd") == 0) return pairs[i].value;
+        }
+        return nullptr;
+    }
+
+    /// Refuse a line, naming its command if the part of it that was parsed says:
+    /// a client matches replies by cmd, so an anonymous error looks like no reply.
+    void _reject(const char* line, const char* msg) {
+        int parsed = 0;
+        (void)detail::json_parse_flat(line, _pairs, EMENU_MAX_PARAMS, &parsed);
+        _emit_error(_cmd_in(_pairs, parsed), msg);
+    }
+
+    // A member, not a local: EMENU_MAX_PARAMS pairs of EMENU_MAX_VALUE_LEN each
+    // would otherwise land on the stack of whatever task polls the port.
+    detail::JsonPair _pairs[EMENU_MAX_PARAMS];
 
     void _dispatch(const char* line) {
-        detail::JsonPair pairs[EMENU_MAX_PARAMS];
-        int n = detail::json_parse_flat(line, pairs, EMENU_MAX_PARAMS);
+        detail::JsonPair* pairs = _pairs;
+        int parsed = 0;
+        int n = detail::json_parse_flat(line, pairs, EMENU_MAX_PARAMS, &parsed);
         if (n < 0) {
-            _emit_error(nullptr, "parse error");
+            _emit_error(_cmd_in(pairs, parsed),
+                        n == detail::JSON_PARSE_TOO_LONG ? "value too long" : "parse error");
             return;
         }
 

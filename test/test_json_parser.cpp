@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <embedded_menu/detail/json_parser.h>
 #include <string.h>
+#include <string>
 
 using namespace emenu::detail;
 
@@ -147,3 +148,39 @@ TEST_CASE("no overflow flag when fits") {
 }
 
 }  // TEST_SUITE
+
+TEST_SUITE("json_parse_flat limits") {
+
+TEST_CASE("the value capacity is EMENU_MAX_VALUE_LEN") {
+    CHECK(sizeof(JsonPair::value) == EMENU_MAX_VALUE_LEN);
+}
+
+TEST_CASE("a string value that just fits is kept whole") {
+    std::string v(EMENU_MAX_VALUE_LEN - 1, 'a');
+    std::string line = "{\"s\":\"" + v + "\"}";
+    JsonPair pairs[2];
+    REQUIRE(json_parse_flat(line.c_str(), pairs, 2) == 1);
+    CHECK(std::string(pairs[0].value) == v);
+}
+
+TEST_CASE("a string value longer than its buffer is an error, not truncated") {
+    std::string line = "{\"s\":\"" + std::string(EMENU_MAX_VALUE_LEN, 'a') + "\"}";
+    JsonPair pairs[2];
+    CHECK(json_parse_flat(line.c_str(), pairs, 2) == JSON_PARSE_TOO_LONG);
+}
+
+TEST_CASE("a key longer than its buffer is an error, not truncated") {
+    std::string line = "{\"" + std::string(sizeof(JsonPair::key), 'k') + "\":1}";
+    JsonPair pairs[2];
+    CHECK(json_parse_flat(line.c_str(), pairs, 2) == JSON_PARSE_TOO_LONG);
+}
+
+TEST_CASE("an escaped quote counts once toward the limit") {
+    // 62 plain characters plus one escaped quote is 63 unescaped: it fits.
+    std::string line = "{\"s\":\"" + std::string(EMENU_MAX_VALUE_LEN - 2, 'a') + "\\\"\"}";
+    JsonPair pairs[2];
+    REQUIRE(json_parse_flat(line.c_str(), pairs, 2) == 1);
+    CHECK(strlen(pairs[0].value) == EMENU_MAX_VALUE_LEN - 1);
+}
+
+}

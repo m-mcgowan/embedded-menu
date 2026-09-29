@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <embedded_menu/transport/json_serial.h>
 #include <string.h>
+#include <string>
 #include <math.h>
 
 using namespace emenu;
@@ -52,6 +53,56 @@ TEST_CASE("string param") {
     js.process_line(R"({"cmd":"greet","name":"Alice"})");
 
     CHECK(strstr(out.str(), "\"greeting\":\"Alice\"") != nullptr);
+}
+
+TEST_CASE("a parameter value that does not fit is rejected, not truncated") {
+    Registry<8> reg;
+    static bool ran;
+    ran = false;
+    reg.add("greet", {[](Cmd& cmd) { ran = true; cmd.reply("greeting", cmd.param_str("name")); }});
+
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    std::string line = "{\"cmd\":\"greet\",\"name\":\"" + std::string(EMENU_MAX_VALUE_LEN + 10, 'x') + "\"}";
+    js.process_line(line.c_str());
+
+    CHECK_FALSE(ran);
+    CHECK(strstr(out.str(), "value too long") != nullptr);
+}
+
+TEST_CASE("a too-long value's error names its command, so a client can match it") {
+    Registry<8> reg;
+    reg.add("greet", {greeting_handler});
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    std::string line = "{\"cmd\":\"greet\",\"name\":\"" + std::string(EMENU_MAX_VALUE_LEN + 10, 'x') + "\"}";
+    js.process_line(line.c_str());
+    CHECK(strstr(out.str(), "\"cmd\":\"greet\"") != nullptr);
+    CHECK(strstr(out.str(), "value too long") != nullptr);
+}
+
+TEST_CASE("a line longer than the buffer is rejected, naming its command") {
+    Registry<8> reg;
+    static bool ran;
+    ran = false;
+    reg.add("greet", {[](Cmd& cmd) { ran = true; cmd.reply("greeting", cmd.param_str("name")); }});
+    BufferWriter<512> out;
+    JsonSerial<8> js(reg, out);
+    std::string line = "{\"cmd\":\"greet\",\"name\":\"" + std::string(400, 'x') + "\"}\n";
+    for (char c : line) js.process_byte(static_cast<uint8_t>(c));
+    CHECK_FALSE(ran);
+    CHECK(strstr(out.str(), "line too long") != nullptr);
+    CHECK(strstr(out.str(), "\"cmd\":\"greet\"") != nullptr);
+}
+
+TEST_CASE("the next line after an overlong one is handled normally") {
+    Registry<8> reg;
+    reg.add("ping", {ping_handler});
+    BufferWriter<1024> out;
+    JsonSerial<8> js(reg, out);
+    std::string line = "{\"cmd\":\"ping\",\"pad\":\"" + std::string(400, 'x') + "\"}\n{\"cmd\":\"ping\"}\n";
+    for (char c : line) js.process_byte(static_cast<uint8_t>(c));
+    CHECK(strstr(out.str(), "\"ok\":true") != nullptr);
 }
 
 TEST_CASE("not found") {
