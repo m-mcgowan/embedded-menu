@@ -4,6 +4,12 @@
 #include "../detail/json_parser.h"
 #include "../detail/json_writer.h"
 #include "../registry.h"
+#include "../writer.h"
+
+#ifndef EMENU_REPLY_LINE_LEN
+/// A reply line up to this long leaves in one write (LineWriter); longer ones in pieces.
+#define EMENU_REPLY_LINE_LEN 512
+#endif
 
 namespace emenu {
 
@@ -23,7 +29,7 @@ template <size_t N = 32>
 class JsonSerial {
 public:
     JsonSerial(Registry<N>& registry, Writer& output)
-        : _registry(registry), _output(output), _line_pos(0) {}
+        : _registry(registry), _output(output), _line_out(output), _line_pos(0) {}
 
     void process_byte(uint8_t c) {
         if (c == '\n' || c == '\r') {
@@ -34,6 +40,7 @@ public:
                 } else {
                     _dispatch(_line_buf);
                 }
+                _line_out.flush();
                 _line_pos = 0;
             }
             _line_overflow = false;
@@ -48,6 +55,7 @@ public:
 
     void process_line(const char* line) {
         _dispatch(line);
+        _line_out.flush();
     }
 
     Writer& output() { return _output; }
@@ -74,6 +82,8 @@ private:
     uint8_t _access = 0xFF;
     Registry<N>& _registry;
     Writer& _output;
+    /// Every reply goes through here: one write per line (see LineWriter).
+    LineWriter<EMENU_REPLY_LINE_LEN> _line_out;
 
     static constexpr size_t LINE_BUF_SIZE = 256;
     char _line_buf[LINE_BUF_SIZE];
@@ -138,7 +148,7 @@ private:
         }
 
         // Build Cmd with remaining fields as params
-        Cmd cmd(_output);
+        Cmd cmd(_line_out);
         cmd.set_command_name(cmd_name);
         for (int i = 0; i < n; i++) {
             if (strcmp(pairs[i].key, "cmd") != 0 &&
@@ -160,7 +170,7 @@ private:
         _registry.execute(cmd_name, cmd);
 
         // Stream response directly to output
-        detail::JsonWriter jw(_output);
+        detail::JsonWriter jw(_line_out);
         jw.begin().field("cmd", cmd_name);
 
         if (cmd.has_reply()) {
@@ -207,7 +217,7 @@ private:
             }
         }
         // Always respond with current state
-        detail::JsonWriter jw(_output);
+        detail::JsonWriter jw(_line_out);
         jw.begin().field("cmd", "tui").field("enabled", _tui_enabled).end();
     }
 
@@ -219,7 +229,7 @@ private:
                 _emit_error("help", "not found");
                 return;
             }
-            detail::JsonWriter jw(_output);
+            detail::JsonWriter jw(_line_out);
             jw.begin().field("cmd", "help");
             _emit_entry_fields(jw, *entry);
             jw.end();
@@ -227,7 +237,7 @@ private:
         }
 
         // List all commands
-        detail::JsonWriter jw(_output);
+        detail::JsonWriter jw(_line_out);
         jw.begin().field("cmd", "help");
         jw.key("commands").begin_array();
         for (const auto& entry : _registry) {
@@ -264,7 +274,7 @@ private:
     }
 
     void _emit_error(const char* cmd_name, const char* msg) {
-        detail::JsonWriter jw(_output);
+        detail::JsonWriter jw(_line_out);
         jw.begin();
         if (cmd_name) jw.field("cmd", cmd_name);
         jw.field("error", msg);
