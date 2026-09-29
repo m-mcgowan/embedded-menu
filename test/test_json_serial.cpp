@@ -2,6 +2,7 @@
 #include <embedded_menu/transport/json_serial.h>
 #include <string.h>
 #include <string>
+#include <vector>
 #include <math.h>
 
 using namespace emenu;
@@ -103,6 +104,36 @@ TEST_CASE("the next line after an overlong one is handled normally") {
     std::string line = "{\"cmd\":\"ping\",\"pad\":\"" + std::string(400, 'x') + "\"}\n{\"cmd\":\"ping\"}\n";
     for (char c : line) js.process_byte(static_cast<uint8_t>(c));
     CHECK(strstr(out.str(), "\"ok\":true") != nullptr);
+}
+
+/// Records each write() call, to see whether a reply leaves as one piece.
+struct ChunkWriter : public Writer {
+    std::vector<std::string> chunks;
+    size_t write(uint8_t c) override { chunks.emplace_back(1, static_cast<char>(c)); return 1; }
+    size_t write(const uint8_t* buf, size_t len) override {
+        chunks.emplace_back(reinterpret_cast<const char*>(buf), len);
+        return len;
+    }
+};
+
+TEST_CASE("a reply leaves as one write, so output from another task cannot split it") {
+    Registry<8> reg;
+    reg.add("greet", {greeting_handler});
+    ChunkWriter out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"greet","name":"Alice"})");
+    REQUIRE(out.chunks.size() == 1);
+    CHECK(out.chunks[0].find("\"greeting\":\"Alice\"") != std::string::npos);
+    CHECK(out.chunks[0].back() == '\n');
+}
+
+TEST_CASE("an error reply leaves as one write too") {
+    Registry<8> reg;
+    ChunkWriter out;
+    JsonSerial<8> js(reg, out);
+    js.process_line(R"({"cmd":"nope"})");
+    REQUIRE(out.chunks.size() == 1);
+    CHECK(out.chunks[0].find("\"error\"") != std::string::npos);
 }
 
 TEST_CASE("not found") {
