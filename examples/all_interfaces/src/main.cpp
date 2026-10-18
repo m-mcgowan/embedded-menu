@@ -98,7 +98,7 @@ static void sleep_handler(Cmd& cmd) {
     // fall back to light sleep
     delay(ms);
     // Force USB re-enumeration
-    rp2040.reboot();
+    NVIC_SystemReset();
 #endif
 }
 
