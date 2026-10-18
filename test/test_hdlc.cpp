@@ -2,6 +2,7 @@
 #include <embedded_menu/framing/hdlc.h>
 
 #include <cstring>
+#include <string>
 #include <vector>
 
 using namespace emenu;
