@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18)
 project(embedded_menu VERSION 0.1.0 LANGUAGES CXX)
 
 # embedded-bridge provides Writer, framing protocols, and CRC-16.
@@ -10,8 +10,9 @@ else()
     include(FetchContent)
     FetchContent_Declare(embedded_bridge
         GIT_REPOSITORY https://github.com/m-mcgowan/embedded-bridge.git
-        GIT_TAG        main
+        GIT_TAG        v0.2.0
         GIT_SHALLOW    TRUE
+        SOURCE_SUBDIR  cpp
     )
     FetchContent_MakeAvailable(embedded_bridge)
 endif()
