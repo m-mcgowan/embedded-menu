@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import pty
+import select
 import threading
 import time
 
@@ -54,7 +55,13 @@ class FirmwareSimulator:
     def _run(self) -> None:
         buf = b""
         while not self._stop.is_set():
+            # Wait with a timeout rather than block in read(): on macOS, closing the
+            # master while another thread is in read() on it blocks the close, so
+            # stop() would hang.
             try:
+                ready, _, _ = select.select([self._master_fd], [], [], 0.1)
+                if not ready:
+                    continue
                 chunk = os.read(self._master_fd, 256)
             except OSError:
                 break
